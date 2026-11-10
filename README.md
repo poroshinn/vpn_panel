@@ -52,8 +52,20 @@ tests/          pytest
 1. Откройте [`plans/progress.md`](plans/progress.md) → возьмите первую задачу со
    статусом ⬜ → откройте её файл в [`plans/tasks/`](plans/tasks/).
 2. Скармливайте агенту: `AGENTS.md` + файл задачи + при необходимости разделы ТЗ.
+   Готовые промты — [`docs/prompts.md`](docs/prompts.md): шаг разработки, отладка,
+   фичи, рефакторинг.
 3. Агент выполняет задачу целиком (код + тесты) и обновляет `plans/progress.md`.
-4. После вашего подтверждения — следующий шаг.
+4. **Каждый шаг — коммит** (`feat(mvp-XX): …` / `fix: …` / `docs: …`); push
+   выполняете вы: `git push origin main`.
+
+### Git
+
+```bash
+git remote add origin https://github.com/<ваш-username>/vpn_panel.git  # если ещё не задан
+git config user.name  "<ваше имя>"
+git config user.email "<ваш email>"
+git push -u origin main
+```
 
 ## Ключевые правила (кратко)
 
