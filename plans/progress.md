@@ -9,7 +9,7 @@
 |---|---|---|---|---|---|
 | 01 | [mvp-01-skeleton.md](tasks/mvp-01-skeleton.md) | M1 | ✅ done (скелет) | 2026-11-10 | Скелет проекта создан заранее; логгер/санитайзер уточнить при выполнении |
 | 02 | [mvp-02-db-migrator.md](tasks/mvp-02-db-migrator.md) | M1 | ✅ done | 2026-11-10 | aiosqlite WAL + asyncio.Lock; мигратор forward-only с pre-migrate снапшотом (только для непустой БД); 15 тестов зелёные |
-| 03 | [mvp-03-auth-roles.md](tasks/mvp-03-auth-roles.md) | M2 | ⬜ todo | — | |
+| 03 | [mvp-03-auth-roles.md](tasks/mvp-03-auth-roles.md) | M2 | ✅ done | 2026-11-10 | argon2id + AES-256-GCM (мастер-ключ автогенерируется в `data/master.key`); HMAC cookie-сессии (absolute/idle TTL); первый admin/admin с обязательной сменой пароля; brute-force прогрессия 30с×2^n на пару логин+IP, IP-блок на 20 неудач; CAPTCHA-стор с атомарным потреблением; require_role по матрице §2.2; инвалидация сессий на disable/role-change/none + logout-blacklist; audit_log (БД + зеркало `logs/audit-*.log`); 51 тест зелёный |
 | 04 | [mvp-04-ssh-layer.md](tasks/mvp-04-ssh-layer.md) | M3 | ⬜ todo | — | ADR-0002 (asyncssh vs Paramiko) — принять на этом шаге |
 | 05 | [mvp-05-servers.md](tasks/mvp-05-servers.md) | M4 | ⬜ todo | — | |
 | 06 | [mvp-06-protocols-peers.md](tasks/mvp-06-protocols-peers.md) | M5 | ⬜ todo | — | |
@@ -34,3 +34,10 @@
   с указанием пути снапшота; conftest сбрасывает кэш `get_settings()` между тестами.
   Тесты: `tests/integration/test_migrator.py` (10), `tests/integration/test_db_locks.py` (5).
   Дымовой прогон: первый старт применяет v1, повторный — no-op.
+- 2026-11-10 — MVP-03: security (argon2id, AES-256-GCM, автогенерация master key),
+  сессии (HMAC-SHA256 cookie, TTL absolute/idle), auth-сервис (первый admin,
+  brute-force прогрессия + IP-блок), CAPTCHA-стор (атомарное потребление),
+  require_role/матрица §2.2, audit (БД + файл-зеркало), роутер `/api/auth/*` +
+  страницы логина/смены пароля. Санитайзер логгера переписан на рендер итогового
+  сообщения (не ломает %d-форматы httpx). 51 тест зелёный; дымовой прогон: логин
+  admin/admin → must_change_password=true.

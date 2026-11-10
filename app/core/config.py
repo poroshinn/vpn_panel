@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Ретеншн логов, дней (FR-3.10.14)
     log_retention_days: int = 7
 
+    # CAPTCHA на странице входа (FR-3.10.3) — доп. слой, не замена brute-force
+    captcha_enabled: bool = False
+
     # Сессии (ТЗ §2.3, настраиваются в settings БД — здесь дефолты)
     session_abs_ttl_seconds: int = 7 * 24 * 3600  # 7 дней
     session_idle_ttl_seconds: int = 24 * 3600  # 24 часа

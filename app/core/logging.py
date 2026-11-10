@@ -26,20 +26,22 @@ _SECRET_PATTERNS: tuple[re[str], str] = (
 
 
 class _SanitizingFilter(logging.Filter):
-    """Фильтр, маскирующий секреты в сообщении и аргументах записи."""
+    """Фильтр, маскирующий секреты в итоговом сообщении записи.
+
+    Сообщение рендерится целиком (msg % args), sanitized-текст подставляется
+    как готовое сообщение без аргументов — форматные спецификаторы (%d и т.п.)
+    сторонних логгеров (например, httpx) не ломаются.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.msg, str):
-            for pattern, replacement in _SECRET_PATTERNS:
-                record.msg = pattern.sub(replacement, record.msg)
-        if record.args:
-            sanitized_args = []
-            for arg in record.args:
-                text = str(arg)
-                for pattern, replacement in _SECRET_PATTERNS:
-                    text = pattern.sub(replacement, text)
-                sanitized_args.append(text)
-            record.args = tuple(sanitized_args)
+        try:
+            text = record.getMessage()
+        except (TypeError, ValueError, KeyError):
+            return True  # битая форматная строка — отдаём как есть
+        for pattern, replacement in _SECRET_PATTERNS:
+            text = pattern.sub(replacement, text)
+        record.msg = text
+        record.args = None
         return True
 
 

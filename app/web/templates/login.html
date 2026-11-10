@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amnezia Web Panel — Sign in</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+    .card { width: 320px; padding: 2rem; border: 1px solid #8884; border-radius: 12px; }
+    h1 { font-size: 1.2rem; margin-top: 0; }
+    label { display: block; margin: 0.75rem 0 0.25rem; font-size: 0.9rem; }
+    input { width: 100%; padding: 0.5rem; border: 1px solid #8886; border-radius: 6px; }
+    button { margin-top: 1rem; width: 100%; padding: 0.6rem; border: 0; border-radius: 6px; background: #3a6df0; color: #fff; font-size: 1rem; cursor: pointer; }
+    .error { color: #c33; margin-top: 0.75rem; font-size: 0.9rem; min-height: 1.2em; }
+    .captcha { display: none; }
+    .captcha.visible { display: block; }
+  </style>
+</head>
+<body>
+  <form class="card" id="login-form">
+    <h1>Amnezia Web Panel</h1>
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <div class="captcha" id="captcha-block">
+      <label for="captcha-answer" id="captcha-question"></label>
+      <input id="captcha-answer" name="captcha_answer" autocomplete="off">
+    </div>
+    <button type="submit">Sign in</button>
+    <div class="error" id="error"></div>
+  </form>
+  <script>
+    // Минимальная логика: CAPTCHA подтягивается при ошибке captcha_*; i18n — MVP-09
+    const form = document.getElementById('login-form');
+    const errorBox = document.getElementById('error');
+    const captchaBlock = document.getElementById('captcha-block');
+
+    async function showError(data) {
+      errorBox.textContent = data.message || data.detail || 'Error';
+      if (data.error_code === 'captcha_failed' || data.error_code === 'captcha_expired') {
+        await loadCaptcha();
+      }
+    }
+
+    async function loadCaptcha() {
+      const res = await fetch('/api/auth/captcha');
+      const data = await res.json();
+      document.getElementById('captcha-question').textContent = data.question;
+      document.getElementById('captcha-answer').value = '';
+      captchaBlock.dataset.id = data.captcha_id;
+      captchaBlock.classList.add('visible');
+    }
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      errorBox.textContent = '';
+      const body = {
+        username: form.username.value,
+        password: form.password.value,
+      };
+      if (captchaBlock.classList.contains('visible')) {
+        body.captcha_id = captchaBlock.dataset.id;
+        body.captcha_answer = form.captcha_answer.value;
+      }
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.must_change_password) {
+          location.href = '/change-password';
+        } else {
+          location.href = '/';
+        }
+        return;
+      }
+      let data;
+      try { data = await res.json(); } catch { data = { detail: 'HTTP ' + res.status }; }
+      await showError(data);
+    });
+  </script>
+</body>
+</html>

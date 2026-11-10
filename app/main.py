@@ -11,10 +11,12 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from app.api.routes.auth import router as auth_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.database import Database
 from app.db.migrator import apply_migrations
+from app.web.pages import router as pages_router
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,10 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Amnezia Web Panel", version="0.1.0", lifespan=lifespan)
+
+    # /api/auth/* — без сессии (ТЗ §2.3); HTML-страницы — корневые пути
+    app.include_router(auth_router)
+    app.include_router(pages_router)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict:
