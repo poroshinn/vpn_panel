@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     session_abs_ttl_seconds: int = 7 * 24 * 3600  # 7 дней
     session_idle_ttl_seconds: int = 24 * 3600  # 24 часа
 
+    # SSH (FR-3.1.8, ADR-0002)
+    ssh_breaker_reset_seconds: float = 30.0  # время разомкнутого состояния
+    ssh_connect_timeout: float = 10.0
+    ssh_command_timeout: float = 30.0
+
 
 _settings: Settings | None = None
 
