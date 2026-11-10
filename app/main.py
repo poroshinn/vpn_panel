@@ -12,11 +12,14 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from app.api.routes.auth import router as auth_router
+from app.api.routes.protocols import router as protocols_router
 from app.api.routes.servers import router as servers_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.database import Database
 from app.db.migrator import apply_migrations
+from app.protocols.installer import ProtocolInstaller
+from app.protocols.peers import PeerService
 from app.servers.service import ServerService
 from app.ssh.pool import SSHPool
 from app.ssh.probes import NodeProber
@@ -48,6 +51,8 @@ async def lifespan(app: FastAPI):
     app.state.ssh_pool = SSHPool()
     app.state.server_service = ServerService(app.state.ssh_pool)
     app.state.node_prober = NodeProber(app.state.ssh_pool)
+    app.state.protocol_installer = ProtocolInstaller(app.state.ssh_pool, app.state.server_service)
+    app.state.peer_service = PeerService(app.state.ssh_pool, app.state.server_service)
     yield
     await app.state.ssh_pool.close_all()
     await db.close()
@@ -59,6 +64,7 @@ def create_app() -> FastAPI:
     # /api/auth/* — без сессии (ТЗ §2.3); HTML-страницы — корневые пути
     app.include_router(auth_router)
     app.include_router(servers_router)
+    app.include_router(protocols_router)
     app.include_router(pages_router)
 
     @app.get("/health", tags=["system"])

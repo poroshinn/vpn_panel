@@ -12,7 +12,7 @@
 | 03 | [mvp-03-auth-roles.md](tasks/mvp-03-auth-roles.md) | M2 | ✅ done | 2026-11-10 | argon2id + AES-256-GCM (мастер-ключ автогенерируется в `data/master.key`); HMAC cookie-сессии (absolute/idle TTL); первый admin/admin с обязательной сменой пароля; brute-force прогрессия 30с×2^n на пару логин+IP, IP-блок на 20 неудач; CAPTCHA-стор с атомарным потреблением; require_role по матрице §2.2; инвалидация сессий на disable/role-change/none + logout-blacklist; audit_log (БД + зеркало `logs/audit-*.log`); 51 тест зелёный |
 | 04 | [mvp-04-ssh-layer.md](tasks/mvp-04-ssh-layer.md) | M3 | ✅ done | 2026-11-10 | ADR-0002: Paramiko (всё через to_thread); пул с переиспользованием соединений и семафором каналов; TOFU known-hosts (файл 0600, mismatch → HostKeyMismatchError); circuit breaker (closed/open/half-open, 3 неудачи, 30с); пробы: TCP-ping (чистый asyncio), docker ps, статистика хоста единым bash-скриптом (JSON, частичный парсинг); секреты только enc, ошибки SSH нормализованы без секретов; 92 теста зелёных |
 | 05 | [mvp-05-servers.md](tasks/mvp-05-servers.md) | M4 | ✅ done | 2026-11-10 | Сервис `app/servers/service.py` (CRUD, стабильный uid, reorder, онбординг-верификация через SSH, reboot), API `/api/v1/servers` (роли §2.2, guard удаления, audit), страницы дашборда/сервера/мастера; 102 теста зелёных |
-| 06 | [mvp-06-protocols-peers.md](tasks/mvp-06-protocols-peers.md) | M5 | ⬜ todo | — | |
+| 06 | [mvp-06-protocols-peers.md](tasks/mvp-06-protocols-peers.md) | M5 | ✅ done | 2026-11-10 | Пресеты (awg-3x/2x/legacy, wg; junk S1/S2/I1–I5, BBR, compose-шаблон), installer (мульти-инстансы `awg2__2`, идемпотентный compose up/down, неопределённые исходы → `lifecycle_uncertain`, 502), peers (operation_id-идемпотентность в `peer_creations`, ретрай с сохранённым client_id, lifecycle-lock на (server, instance), rename/enable/disable/delete, tombstone в `accounting_recoveries`), configs (.conf-санитайзер, QR PNG, vpn:// roundtrip), API `/presets`, `/servers/{id}/protocols`, `/servers/{id}/connections`, `/connections/{id}/config?format=conf|qr`; 124 теста зелёных |
 | 07 | [mvp-07-accounting.md](tasks/mvp-07-accounting.md) | M6 | ⬜ todo | — | |
 | 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ⬜ todo | — | |
 | 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ⬜ todo | — | |
@@ -68,3 +68,30 @@
   ролей, 401 аноним, audit create/delete. Итог: 102 теста зелёных; ruff по
   затронутым файлам чист (в pyproject добавлен ignore B008 — идиоматика FastAPI).
   Замечание: системный `python3` — 3.9, тесты запускать через `.venv/bin/python`.
+- 2026-11-10 — MVP-06: `app/protocols/presets.py` — маркетплейс из 4 пресетов
+  (awg-3x / awg-2x / awg-legacy / wg), junk-словарь AWG по умолчанию, валидация
+  ключей, `instance_key` (мульти-инстансы `awg2__2`), render_compose (ports,
+  cap_add NET_ADMIN, volume, BBR через sysctls). `installer.py` — установка
+  через heredoc-запись compose + `docker compose up -d`, auto-slot для
+  мульти-инстансов (учитывает и базовый ключ), guard одиночных протоколов;
+  SSH-сбой/ненулевой exit → запись в `lifecycle_uncertain` + 502 (fail-closed).
+  `peers.py` — операции в `peer_creations` (pending/done/failed/uncertain);
+  идемпотентный ретрай повторяет сохранённый client_id (без дубликатов);
+  lifecycle-lock (asyncio.Lock на (server_id, instance)) для create/rename/
+  enable/disable/delete/raw-config; атомарные транзакции для записей
+  user_connections; удаление пишет tombstone в `accounting_recoveries`
+  (для MVP-07). `configs.py` — санитайзер raw-конфига (allow-list ключей
+  WG/AWG), build_client_conf, vpn:// (base64 JSON-дескриптор Amnezia, roundtrip),
+  QR PNG через qrcode[pil]. API: GET /api/v1/presets; POST/GET/DELETE
+  /api/v1/servers/{id}/protocols; POST/GET /servers/{id}/connections;
+  PATCH/DELETE /connections/{id}; enable/disable; GET /connections (свои);
+  GET /connections/{id}/config (?format=conf|qr, доступ admin/support/владелец).
+  Роли §2.2: мутации протоколов — admin; peers — admin+support; конфиги —
+  владелец. Тесты: unit (12: пресеты, compose, conf/vpn://-roundtrip, QR) +
+  integration (10: install/uninstall/мульти-инстансы/guard/uncertain,
+  идемпотентность create/delete, ретрай после uncertain, параллельный rename,
+  tombstone, audit, матрица ролей, endpoint конфига) на wildcard-mock SSH.
+  Исправлено: slot-вычисление учитывало занятый базовый ключ; ретрай
+  генерировал новый client_id; create_peer возвращал запись без id. Итог:
+  124 теста зелёных; ruff по новым файлам чист (замечания в старых файлах —
+  вне скоупа шага).
