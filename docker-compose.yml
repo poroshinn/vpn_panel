@@ -1,0 +1,16 @@
+services:
+  panel:
+    build: .
+    container_name: vpn-panel
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - .env
+    volumes:
+      - amnezia_data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    restart: unless-stopped
+
+volumes:
+  amnezia_data:

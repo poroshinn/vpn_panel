@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Тесты и кэши
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Данные панели (не коммитить!)
+data/
+logs/
+backups/
+*.db
+*.db.gz
+*.db-wal
+*.db-shm
+
+# Секреты и локальные конфиги
+.env
+ssh_known_hosts
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
