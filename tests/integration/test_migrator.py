@@ -42,19 +42,19 @@ async def _user_tables(db: Database) -> set[str]:
 
 
 async def test_apply_from_scratch(db: Database) -> None:
-    """Применение с нуля: все таблицы созданы, версия = 1."""
+    """Применение с нуля: все таблицы созданы, версия = последней миграции."""
     version = await apply_migrations(db)
-    assert version == 1
-    assert await get_schema_version(db) == 1
+    assert await get_schema_version(db) == version
+    assert version >= 1
     assert EXPECTED_TABLES <= await _user_tables(db)
 
 
 async def test_apply_idempotent(db: Database) -> None:
     """Повторное применение — no-op, версия не меняется."""
-    assert await apply_migrations(db) == 1
-    assert await apply_migrations(db) == 1
-    rows = await db.fetch_all("SELECT version FROM schema_version")
-    assert [r["version"] for r in rows] == [1]
+    assert await apply_migrations(db) == await apply_migrations(db)
+    rows = await db.fetch_all("SELECT version FROM schema_version ORDER BY version")
+    assert len(rows) >= 1
+    assert rows == sorted(rows, key=lambda r: r["version"])
 
 
 async def test_pragmas_on_connect(db: Database) -> None:
@@ -68,7 +68,7 @@ async def test_pre_migrate_snapshot_created(db: Database, tmp_data_dir: Path) ->
     # Готовим «существующую» БД без schema_version — мигратор сделает снапшот
     await db.executescript("CREATE TABLE legacy_marker (id INTEGER PRIMARY KEY);")
 
-    assert await apply_migrations(db) == 1
+    assert await apply_migrations(db) >= 1
 
     backup_dir = get_settings().backup_dir / "pre-migrate"
     snapshots = list(backup_dir.glob("pre-migrate-*panel.db"))

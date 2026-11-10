@@ -11,6 +11,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from app.accounting.finalization import FinalizationService
+from app.accounting.service import POLL_INTERVAL_DEFAULT, AccountingService
+from app.api.routes.accounting import router as accounting_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.protocols import router as protocols_router
 from app.api.routes.servers import router as servers_router
@@ -53,7 +56,19 @@ async def lifespan(app: FastAPI):
     app.state.node_prober = NodeProber(app.state.ssh_pool)
     app.state.protocol_installer = ProtocolInstaller(app.state.ssh_pool, app.state.server_service)
     app.state.peer_service = PeerService(app.state.ssh_pool, app.state.server_service)
+    app.state.finalization_service = FinalizationService(
+        app.state.ssh_pool, app.state.server_service
+    )
+    poll_interval = int(
+        getattr(settings, "accounting_poll_interval", POLL_INTERVAL_DEFAULT)
+    )
+    app.state.accounting_service = AccountingService(
+        db, app.state.ssh_pool, app.state.server_service, app.state.peer_service,
+        poll_interval=poll_interval,
+    )
+    app.state.accounting_service.start()
     yield
+    await app.state.accounting_service.stop()
     await app.state.ssh_pool.close_all()
     await db.close()
 
@@ -65,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(servers_router)
     app.include_router(protocols_router)
+    app.include_router(accounting_router)
     app.include_router(pages_router)
 
     @app.get("/health", tags=["system"])

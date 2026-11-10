@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     ssh_connect_timeout: float = 10.0
     ssh_command_timeout: float = 30.0
 
+    # Учёт трафика (FR-3.5.5): интервал опроса 30–300 с
+    accounting_poll_interval: int = 60
+
 
 _settings: Settings | None = None
 

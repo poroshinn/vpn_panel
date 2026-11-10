@@ -13,7 +13,7 @@
 | 04 | [mvp-04-ssh-layer.md](tasks/mvp-04-ssh-layer.md) | M3 | ✅ done | 2026-11-10 | ADR-0002: Paramiko (всё через to_thread); пул с переиспользованием соединений и семафором каналов; TOFU known-hosts (файл 0600, mismatch → HostKeyMismatchError); circuit breaker (closed/open/half-open, 3 неудачи, 30с); пробы: TCP-ping (чистый asyncio), docker ps, статистика хоста единым bash-скриптом (JSON, частичный парсинг); секреты только enc, ошибки SSH нормализованы без секретов; 92 теста зелёных |
 | 05 | [mvp-05-servers.md](tasks/mvp-05-servers.md) | M4 | ✅ done | 2026-11-10 | Сервис `app/servers/service.py` (CRUD, стабильный uid, reorder, онбординг-верификация через SSH, reboot), API `/api/v1/servers` (роли §2.2, guard удаления, audit), страницы дашборда/сервера/мастера; 102 теста зелёных |
 | 06 | [mvp-06-protocols-peers.md](tasks/mvp-06-protocols-peers.md) | M5 | ✅ done | 2026-11-10 | Пресеты (awg-3x/2x/legacy, wg; junk S1/S2/I1–I5, BBR, compose-шаблон), installer (мульти-инстансы `awg2__2`, идемпотентный compose up/down, неопределённые исходы → `lifecycle_uncertain`, 502), peers (operation_id-идемпотентность в `peer_creations`, ретрай с сохранённым client_id, lifecycle-lock на (server, instance), rename/enable/disable/delete, tombstone в `accounting_recoveries`), configs (.conf-санитайзер, QR PNG, vpn:// roundtrip), API `/presets`, `/servers/{id}/protocols`, `/servers/{id}/connections`, `/connections/{id}/config?format=conf|qr`; 124 теста зелёных |
-| 07 | [mvp-07-accounting.md](tasks/mvp-07-accounting.md) | M6 | ⬜ todo | — | |
+| 07 | [mvp-07-accounting.md](tasks/mvp-07-accounting.md) | M6 | ✅ done | 2026-11-10 | Fail-closed учёт трафика: миграция 0002 (epoch_hash, базлайны rx/tx, lifetime, last_sample_at, counters_verified_final, traffic_reset_month); `app/accounting/` — epochs (SHA-256 хэш эпохи из container/PID/started/boot_id/ifindex/inode:ctime, парсер `awg show transfer`), collector (опрос метаданных до/после transfer, дедупликация владельцев алиасов), service (фоновый цикл 60с [30–300], базлайны переживают рестарт, gap-детекция epoch_changed/counter_reset → tombstone `accounting_recoveries` без обнуления итогов, квоты UTC + auto-disable `quota`, месячный сброс), finalization (FR-3.11.4: чтение счётчиков при отвязке, дельта + tombstone verified, fail-closed 409 can_force / allow_unverified); API `/api/v1/accounting`, `/users/{id}/accounting|quota`, `/accounting/reset-month`, `/servers/{id}/connections/{id}/finalize` (роли §2.2, audit); 147 тестов зелёных, ruff чист по новым файлам |
 | 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ⬜ todo | — | |
 | 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ⬜ todo | — | |
 | 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ⬜ todo | — | |
@@ -95,3 +95,29 @@
   генерировал новый client_id; create_peer возвращал запись без id. Итог:
   124 теста зелёных; ruff по новым файлам чист (замечания в старых файлах —
   вне скоупа шага).
+- 2026-11-10 — MVP-07: `app/accounting/` — `epochs.py` (парсер transfer-вывода
+  с точными int RX/TX; EpochMeta + epoch_hash = SHA-256 конкатенации
+  container_id/started_at/pid/boot_id/ifindex/socket_inode/socket_ctime;
+  EPOCH_META_SCRIPT единым SSH-вызовом; частичный сбор допустим — появление/
+  исчезновение компонента меняет хэш), `collector.py` (мета ДО → transfer →
+  мета ПОСЛЕ; race → socket_ctime="raced"; параллельный обход нод; дедупликация
+  владельцев одного физического peer'а по алиасам `awg2__2`→`awg2`), `service.py`
+  (AccountingService: фоновый тик 60с, MIN=30/MAX=300, config `accounting_poll_interval`;
+  первый семпл = только базлайн; delta = raw − base при совпадении эпохи;
+  epoch_changed/counter_reset → `traffic_accounting_gap` + counters_verified_final=0,
+  итоги НЕ обнуляются (правило 5); `_apply_quotas`: expiration + traffic_limit →
+  disable_reasons с добавлением/снятием "quota", reconcile доступа через
+  PeerService.set_peer_enabled best-effort; `monthly_reset` — UTC-ключ `%Y-%m`,
+  идемпотентен, базлайны не трогает), `finalization.py` (finalize_peer: verified
+  коммит дельты + tombstone reason='finalized'; счётчики нечитаемы →
+  FinalizationError('counter_unreadable', can_force) → API 409; allow_unverified →
+  tombstone без дельты reason='finalized_unverified'). API: сводка self/admin+support,
+  quota/reset-month/finalize — admin, единый JSON ошибок, audit-события.
+  Миграция 0002 (только forward). Тесты: unit (парсер/эпохи/дедупликация/месяцы) +
+  integration (9: цикл опроса с базлайном и дельтой, gap при смене эпохи, gap при
+  reset счётчиков, квота-автоотключение с reconcile, месячный сброс идемпотентный,
+  финализация happy/unreadable/allow_unverified, базлайны переживают пересоздание
+  сервиса, матрица ролей эндпоинтов). Отладка: причина «corrupted stdout» в моке —
+  позиционная передача raw-строки в параметр rx хелпера set_transfer (мок-артефакт,
+  не продуктовый баг); тесты мигратора переведены с жёсткой версии 1 на
+  относительную проверку. Итог: 147 тестов зелёных; ruff по новым файлам чист.
