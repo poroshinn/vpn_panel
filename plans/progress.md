@@ -11,7 +11,7 @@
 | 02 | [mvp-02-db-migrator.md](tasks/mvp-02-db-migrator.md) | M1 | ✅ done | 2026-11-10 | aiosqlite WAL + asyncio.Lock; мигратор forward-only с pre-migrate снапшотом (только для непустой БД); 15 тестов зелёные |
 | 03 | [mvp-03-auth-roles.md](tasks/mvp-03-auth-roles.md) | M2 | ✅ done | 2026-11-10 | argon2id + AES-256-GCM (мастер-ключ автогенерируется в `data/master.key`); HMAC cookie-сессии (absolute/idle TTL); первый admin/admin с обязательной сменой пароля; brute-force прогрессия 30с×2^n на пару логин+IP, IP-блок на 20 неудач; CAPTCHA-стор с атомарным потреблением; require_role по матрице §2.2; инвалидация сессий на disable/role-change/none + logout-blacklist; audit_log (БД + зеркало `logs/audit-*.log`); 51 тест зелёный |
 | 04 | [mvp-04-ssh-layer.md](tasks/mvp-04-ssh-layer.md) | M3 | ✅ done | 2026-11-10 | ADR-0002: Paramiko (всё через to_thread); пул с переиспользованием соединений и семафором каналов; TOFU known-hosts (файл 0600, mismatch → HostKeyMismatchError); circuit breaker (closed/open/half-open, 3 неудачи, 30с); пробы: TCP-ping (чистый asyncio), docker ps, статистика хоста единым bash-скриптом (JSON, частичный парсинг); секреты только enc, ошибки SSH нормализованы без секретов; 92 теста зелёных |
-| 05 | [mvp-05-servers.md](tasks/mvp-05-servers.md) | M4 | ⬜ todo | — | |
+| 05 | [mvp-05-servers.md](tasks/mvp-05-servers.md) | M4 | ✅ done | 2026-11-10 | Сервис `app/servers/service.py` (CRUD, стабильный uid, reorder, онбординг-верификация через SSH, reboot), API `/api/v1/servers` (роли §2.2, guard удаления, audit), страницы дашборда/сервера/мастера; 102 теста зелёных |
 | 06 | [mvp-06-protocols-peers.md](tasks/mvp-06-protocols-peers.md) | M5 | ⬜ todo | — | |
 | 07 | [mvp-07-accounting.md](tasks/mvp-07-accounting.md) | M6 | ⬜ todo | — | |
 | 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ⬜ todo | — | |
@@ -55,3 +55,16 @@
   `ssh_command_timeout`. Тесты: unit (CB 10, парсеры 8, TOFU 8) + integration
   (mock paramiko-транспорта: пул, breaker, no-echo секретов, TOFU mismatch,
   параллельность проб). Итог: 92 теста зелёные, ruff чист.
+- 2026-11-10 — MVP-05: `ServerService` — create (секреты AES-GCM at rest, автосортировка
+  в конец), update (закрытие SSH-соединения при смене кредов), delete с guard'ом
+  «сервер имеет подключения» (409, force=true убирает подключения явно — FK без
+  CASCADE в схеме 0001), reorder по списку `uid`, `verify_server` (онбординг-скрипт:
+  docker ps + /etc/passwd, детекция сохраняется в `servers.protocols`), `reboot_server`
+  (shutdown -r, закрытие пула). API `/api/v1/servers`: list/get — admin+support,
+  мутации — admin, ping/stats — admin+support, ошибки — единый JSON. Страницы:
+  дашборд с polling ping-индикаторами, мастер `/servers/new` (create + verify),
+  страница сервера (контейнеры, действия, статистика). Тесты (10 новых): CRUD/uid,
+  guard, reorder персистентный, онбординг на mock-SSH, сбой верификации, матрица
+  ролей, 401 аноним, audit create/delete. Итог: 102 теста зелёных; ruff по
+  затронутым файлам чист (в pyproject добавлен ignore B008 — идиоматика FastAPI).
+  Замечание: системный `python3` — 3.9, тесты запускать через `.venv/bin/python`.

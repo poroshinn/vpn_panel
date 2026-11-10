@@ -31,7 +31,10 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "S", "ASYNC"]
-ignore = ["S101"]  # assert в тестах разрешён
+ignore = [
+    "S101",  # assert в тестах разрешён
+    "B008",  # Depends()/require_role() в дефолтах — идиоматика FastAPI
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

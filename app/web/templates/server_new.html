@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amnezia Web Panel — Add server</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6f8; }
+  header { background: #1f2937; color: #fff; padding: 12px 24px; }
+  main { max-width: 560px; margin: 24px auto; padding: 0 16px; }
+  form { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; }
+  label { display: block; margin: 12px 0 4px; font-weight: 600; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; }
+  .btn { margin-top: 16px; padding: 10px 16px; background: #2563eb; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+  #result { margin-top: 16px; white-space: pre-wrap; font-size: 0.9em; }
+  .err { color: #b91c1c; }
+</style>
+</head>
+<body>
+<header><strong>Amnezia Web Panel</strong> — add server</header>
+<main>
+<form id="form">
+  <label>Name <input name="name" required maxlength="128"></label>
+  <label>Host <input name="host" required maxlength="255"></label>
+  <label>SSH port <input name="ssh_port" type="number" value="22" min="1" max="65535"></label>
+  <label>SSH username <input name="username" value="root" required></label>
+  <label>Password <input name="password" type="password" autocomplete="new-password"></label>
+  <label>…or private key <textarea name="private_key" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></label>
+  <button class="btn" type="submit">Create & verify</button>
+  <div id="result"></div>
+</form>
+<script>
+document.getElementById('form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const out = document.getElementById('result');
+  out.className = '';
+  const f = ev.target;
+  const body = {
+    name: f.name.value, host: f.host.value,
+    ssh_port: parseInt(f.ssh_port.value, 10) || 22,
+    username: f.username.value,
+  };
+  if (f.password.value) body.password = f.password.value;
+  if (f.private_key.value.trim()) body.private_key = f.private_key.value;
+  const resp = await fetch('/api/v1/servers', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (resp.status !== 201) {
+    out.className = 'err';
+    out.textContent = `Error ${data.error_code || resp.status}: ${data.message || ''}`;
+    return;
+  }
+  out.textContent = `Server #${data.id} created (${data.uid}). Verifying…`;
+  const v = await fetch(`/api/v1/servers/${data.id}/verify`, {method: 'POST'});
+  const vdata = await v.json();
+  out.textContent = 'Verification: ' + JSON.stringify(vdata, null, 2);
+  setTimeout(() => { location.href = `/servers/${data.id}`; }, 1200);
+});
+</script>
+</body>
+</html>

@@ -93,11 +93,13 @@ class FakeChannel:
         self.closed = True
 
 
-@pytest.fixture
-def fake_ssh(monkeypatch: pytest.MonkeyPatch) -> dict[str, tuple[int, str, str]]:
-    """Мок paramiko: connect() всегда успешен, каналы читают из таблицы results.
+def install_fake_paramiko(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, tuple[int, str, str]]:
+    """Установить mock paramiko.SSHClient; вернуть таблицу результатов команд.
 
     Ключ результатов — команда; значение — (exit_code, stdout, stderr).
+    Переиспользуется интеграционными тестами (servers и др.).
     """
     results: dict[str, tuple[int, str, str]] = {}
 
@@ -121,6 +123,11 @@ def fake_ssh(monkeypatch: pytest.MonkeyPatch) -> dict[str, tuple[int, str, str]]
 
     monkeypatch.setattr(paramiko, "SSHClient", FakeClient)
     return results
+
+
+@pytest.fixture
+def fake_ssh(monkeypatch: pytest.MonkeyPatch) -> dict[str, tuple[int, str, str]]:
+    return install_fake_paramiko(monkeypatch)
 
 
 def make_creds() -> NodeCredentials:

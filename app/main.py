@@ -12,10 +12,14 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from app.api.routes.auth import router as auth_router
+from app.api.routes.servers import router as servers_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.db.database import Database
 from app.db.migrator import apply_migrations
+from app.servers.service import ServerService
+from app.ssh.pool import SSHPool
+from app.ssh.probes import NodeProber
 from app.web.pages import router as pages_router
 
 logger = logging.getLogger(__name__)
@@ -41,7 +45,11 @@ async def lifespan(app: FastAPI):
     logger.info("Panel started, schema version %s", version)
 
     app.state.db = db
+    app.state.ssh_pool = SSHPool()
+    app.state.server_service = ServerService(app.state.ssh_pool)
+    app.state.node_prober = NodeProber(app.state.ssh_pool)
     yield
+    await app.state.ssh_pool.close_all()
     await db.close()
 
 
@@ -50,6 +58,7 @@ def create_app() -> FastAPI:
 
     # /api/auth/* — без сессии (ТЗ §2.3); HTML-страницы — корневые пути
     app.include_router(auth_router)
+    app.include_router(servers_router)
     app.include_router(pages_router)
 
     @app.get("/health", tags=["system"])
