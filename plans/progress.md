@@ -8,7 +8,7 @@
 | # | Задача | Веха | Статус | Дата | Заметки |
 |---|---|---|---|---|---|
 | 01 | [mvp-01-skeleton.md](tasks/mvp-01-skeleton.md) | M1 | ✅ done (скелет) | 2026-11-10 | Скелет проекта создан заранее; логгер/санитайзер уточнить при выполнении |
-| 02 | [mvp-02-db-migrator.md](tasks/mvp-02-db-migrator.md) | M1 | ⬜ todo | — | |
+| 02 | [mvp-02-db-migrator.md](tasks/mvp-02-db-migrator.md) | M1 | ✅ done | 2026-11-10 | aiosqlite WAL + asyncio.Lock; мигратор forward-only с pre-migrate снапшотом (только для непустой БД); 15 тестов зелёные |
 | 03 | [mvp-03-auth-roles.md](tasks/mvp-03-auth-roles.md) | M2 | ⬜ todo | — | |
 | 04 | [mvp-04-ssh-layer.md](tasks/mvp-04-ssh-layer.md) | M3 | ⬜ todo | — | ADR-0002 (asyncssh vs Paramiko) — принять на этом шаге |
 | 05 | [mvp-05-servers.md](tasks/mvp-05-servers.md) | M4 | ⬜ todo | — | |
@@ -28,3 +28,9 @@
 ## Заметки
 
 - 2026-11-10 — создан стартовый набор: документация, планы, скелет кода (MVP-01).
+- 2026-11-10 — MVP-02: `Database` — WAL, busy_timeout, writer-lock, `transaction()`
+  (атомарные коммит/откат); мигратор — валидация id (дубли/неположительные ⇒
+  `MigrationError`), pre-migrate снапшот только для непустых БД, диагностика сбоя
+  с указанием пути снапшота; conftest сбрасывает кэш `get_settings()` между тестами.
+  Тесты: `tests/integration/test_migrator.py` (10), `tests/integration/test_db_locks.py` (5).
+  Дымовой прогон: первый старт применяет v1, повторный — no-op.

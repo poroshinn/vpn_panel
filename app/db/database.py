@@ -1,13 +1,16 @@
 """Асинхронный доступ к SQLite (FR-3.15.1).
 
 WAL, один writer через ``asyncio.Lock`` (правило 1 AGENTS.md), транзакционная
-целостность. Полная реализация — шаг MVP-02.
+целостность. Все запросы идут через одно соединение процесса; мутации — под
+writer-lock, чтобы конкурентные корутины не получали «database is locked».
 """
 
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator
 
 import aiosqlite
 
@@ -26,6 +29,8 @@ class Database:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = await aiosqlite.connect(self._path)
         self._conn.row_factory = aiosqlite.Row
+        # busy_timeout — страховка от внешних читателей (например, CLI-скриптов)
+        await self._conn.execute("PRAGMA busy_timeout=5000")
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.execute("PRAGMA synchronous=FULL")
@@ -41,6 +46,10 @@ class Database:
         if self._conn is None:
             raise RuntimeError("Database is not connected")
         return self._conn
+
+    @property
+    def path(self) -> Path:
+        return self._path
 
     async def fetch_one(self, query: str, params: tuple = ()) -> dict | None:
         async with self.conn.execute(query, params) as cur:
@@ -62,3 +71,18 @@ class Database:
         async with self._write_lock:
             await self.conn.executescript(script)
             await self.conn.commit()
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[aiosqlite.Connection]:
+        """Атомарная транзакция записи — под writer-lock.
+
+        Коммит при нормальном выходе, откат при исключении. Вложенные вызовы
+        ``execute``/``executescript`` внутри транзакции не делать: у них свой lock.
+        """
+        async with self._write_lock:
+            try:
+                yield self.conn
+                await self.conn.commit()
+            except BaseException:
+                await self.conn.rollback()
+                raise
