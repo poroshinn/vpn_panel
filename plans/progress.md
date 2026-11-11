@@ -16,7 +16,7 @@
 | 07 | [mvp-07-accounting.md](tasks/mvp-07-accounting.md) | M6 | ✅ done | 2026-11-10 | Fail-closed учёт трафика: миграция 0002 (epoch_hash, базлайны rx/tx, lifetime, last_sample_at, counters_verified_final, traffic_reset_month); `app/accounting/` — epochs (SHA-256 хэш эпохи из container/PID/started/boot_id/ifindex/inode:ctime, парсер `awg show transfer`), collector (опрос метаданных до/после transfer, дедупликация владельцев алиасов), service (фоновый цикл 60с [30–300], базлайны переживают рестарт, gap-детекция epoch_changed/counter_reset → tombstone `accounting_recoveries` без обнуления итогов, квоты UTC + auto-disable `quota`, месячный сброс), finalization (FR-3.11.4: чтение счётчиков при отвязке, дельта + tombstone verified, fail-closed 409 can_force / allow_unverified); API `/api/v1/accounting`, `/users/{id}/accounting|quota`, `/accounting/reset-month`, `/servers/{id}/connections/{id}/finalize` (роли §2.2, audit); 147 тестов зелёных, ruff чист по новым файлам |
 | 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ✅ done | 2026-11-11 | Пользователи панели: `app/users/service.py` (CRUD FR-3.6.1 — роль/пароль обязателен кроме none/telegram/квота/expiration, защита последнего admin), enable/disable одной кнопкой с автоинвалидацией FR-3.6.4 (сессии — сверка с БД на каждом запросе, Bearer-токены — hook `TokenRevocationHook` для MVP-11), привязка подключений FR-3.6.2 и отвязка владельца FR-3.6.3 (активный peer → stop на ноде + финализация; нечитаемый счётчик → 409 can_force / allow_unverified), экспорт подключений FR-3.6.5 (admin/support); API `/api/v1/users/...` (роли §2.2, audit-события user.created/updated/enabled/disabled/deleted, connection.assigned/unlinked, user.export); 7 integration-тестов (CRUD, мгновенная инвалидация сессии на disable и role=none, unlink через stop с verified-финализацией, fail-closed 409, матрица экспорта, audit); 154 теста зелёных, ruff чист по новым файлам |
 | 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ✅ done | 2026-11-11 | i18n (en/ru, fallback en, CLDR-плурализация, cookie→Accept-Language→en); SSE /api/v1/events (EventHub, queue 256, дроп при переполнении, keep-alive 15с, retry 3с); дизайн-система (CSS-переменные, светлая/тёмная тема через cookie, мобильная tab-панель, base.html); страницы: дашборд (SSE+polling-fallback), сервер (ping/статистика), /my (свои подключения, conf/QR), настройки (вкладки: внешний вид, CAPTCHA/бэкапы/алерты — заглушки); noindex/no-follow meta на всех страницах + /robots.txt Disallow:/; статика с max-age; 193 теста зелёных, ruff чист |
-| 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ⬜ todo | — | |
+| 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ✅ done | 2026-11-11 | Share-токены (стабильные) + пароль argon2; rotate/revoke с audit; публичная /share/{token} (список подключений + conf/QR теми же генераторами MVP-06); share-сессия — HMAC-cookie с ревизией (смена пароля/токена/токена-ревокации мгновенно закрывает сессию); rate-limit попыток пароля (10/60с); noindex/no-store; 7 integration-тестов; 200 тестов зелёных, ruff чист |
 | 11 | [mvp-11-backups.md](tasks/mvp-11-backups.md) | M10 | ⬜ todo | — | |
 | 12 | [mvp-12-api-tokens.md](tasks/mvp-12-api-tokens.md) | M11 | ⬜ todo | — | |
 | 13 | [mvp-13-observability-alerts.md](tasks/mvp-13-observability-alerts.md) | M12 | ⬜ todo | — | Финал MVP: acceptance по разделу 8 ТЗ |
@@ -26,6 +26,31 @@
 Задачи будут декомпозированы из `plans/roadmap.md` после закрытия MVP.
 
 ## Заметки
+
+- 2026-11-11 — MVP-10: `app/sharing/service.py` — ShareService: setup_share
+  (токен стабилен, повторный setup не меняет ссылку; пароль argon2-хэшем;
+  plaintext-токен возвращается только на setup/rotate), rotate_token
+  (перегенерация — старая ссылка недействительна сразу), revoke_share
+  (share_enabled=0, токен/пароль стираются), resolve_token (disabled/role=none
+  → None), verify_share_password, session_value/ревизия = SHA-256(token|hash).
+  Share-сессия — cookie `awp_share` c HMAC-SHA256-подписью от мастер-ключа
+  панели; ревизия в payload делает недействительными все share-сессии при
+  смене пароля/ротации токена. Rate-limit попыток пароля in-process
+  (10/60с на токен). `app/sharing/web.py` — GET/POST /share/{token}
+  (форма пароля → 303 + cookie), /share/{token}/download/{conn_id}
+  (?format=conf|qr; raw-конфиг с ноды через PeerService.raw_config +
+  client_bundle MVP-06; доступ только к подключениям владельца). Все ответы
+  share-страниц — Cache-Control: no-store, noindex/nofollow в шаблонах.
+  API `app/api/routes/sharing.py` — GET status (admin+support, без токена),
+  POST setup/rotate/revoke (admin), audit-события share.setup /
+  share.token_rotated / share.revoked. Шаблоны share.html /
+  share_password.html / share_error.html; i18n-ключи share.* (en/ru).
+  Схема не менялась (share_token/share_enabled/share_password_hash уже в
+  миграции 0001). Тесты: `tests/integration/test_sharing.py` (7: роли setup
+  + стабильность токена + never-echo в статусе, страница/выгрузка без
+  входа, 404 на отозванный/чужой токен, rotate мгновенно инвалидирует +
+  audit, пароль-барьер + share-сессия, rate-limit 429, disable владельца
+  закрывает share). Итог: 200 тестов зелёных; ruff по затронутым файлам чист.
 
 - 2026-11-11 — MVP-09: `app/i18n/catalog.py` (Catalog с fallback на en,
   CLDR-плурализация ru one/few/many, detect_locale: cookie `awp_lang` →

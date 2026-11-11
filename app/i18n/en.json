@@ -49,5 +49,16 @@
   "role.admin": "Administrator",
   "role.support": "Support",
   "role.user": "User",
-  "role.none": "No access"
+  "role.none": "No access",
+  "share.title": "Shared configurations",
+  "share.owner": "Owner",
+  "share.empty": "No shared connections yet.",
+  "share.password_required": "Password required",
+  "share.password": "Password",
+  "share.continue": "Continue",
+  "share.wrong_password": "Wrong password. Try again.",
+  "share.rate_limited": "Too many attempts. Try again later.",
+  "share.not_found": "Link is invalid or expired.",
+  "share.unavailable": "Sharing is temporarily unavailable.",
+  "share.config_unavailable": "Configuration is currently unavailable."
 }

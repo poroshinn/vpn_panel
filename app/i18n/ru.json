@@ -49,5 +49,16 @@
   "role.admin": "Администратор",
   "role.support": "Поддержка",
   "role.user": "Пользователь",
-  "role.none": "Нет доступа"
+  "role.none": "Нет доступа",
+  "share.title": "Общие конфигурации",
+  "share.owner": "Владелец",
+  "share.empty": "Общих подключений пока нет.",
+  "share.password_required": "Требуется пароль",
+  "share.password": "Пароль",
+  "share.continue": "Продолжить",
+  "share.wrong_password": "Неверный пароль. Попробуйте снова.",
+  "share.rate_limited": "Слишком много попыток. Повторите позже.",
+  "share.not_found": "Ссылка недействительна или устарела.",
+  "share.unavailable": "Шеринг временно недоступен.",
+  "share.config_unavailable": "Конфигурация сейчас недоступна."
 }

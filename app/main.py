@@ -18,6 +18,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.events import router as events_router
 from app.api.routes.protocols import router as protocols_router
 from app.api.routes.servers import router as servers_router
+from app.api.routes.sharing import router as sharing_router
 from app.api.routes.users import router as users_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
@@ -26,6 +27,8 @@ from app.db.migrator import apply_migrations
 from app.protocols.installer import ProtocolInstaller
 from app.protocols.peers import PeerService
 from app.servers.service import ServerService
+from app.sharing.service import ShareService
+from app.sharing.web import share_router
 from app.ssh.pool import SSHPool
 from app.ssh.probes import NodeProber
 from app.users.service import UserService
@@ -64,6 +67,7 @@ async def lifespan(app: FastAPI):
     app.state.user_service = UserService(
         app.state.ssh_pool, app.state.peer_service, app.state.server_service
     )
+    app.state.share_service = ShareService(app.state.peer_service)
     app.state.finalization_service = FinalizationService(
         app.state.ssh_pool, app.state.server_service
     )
@@ -84,14 +88,17 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Amnezia Web Panel", version="0.1.0", lifespan=lifespan)
 
-    # /api/auth/* — без сессии (ТЗ §2.3); HTML-страницы — корневые пути
+    # /api/auth/* — без сессии (ТЗ §2.3); HTML-страницы — корневые пути;
+    # /share/* — публичные (FR-3.8.2), без сессии панели
     app.include_router(auth_router)
     app.include_router(servers_router)
     app.include_router(protocols_router)
     app.include_router(accounting_router)
     app.include_router(users_router)
+    app.include_router(sharing_router)
     app.include_router(events_router)
     app.include_router(pages_router)
+    app.include_router(share_router)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict:

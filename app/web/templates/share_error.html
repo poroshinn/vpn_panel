@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{ t('share.title') }}</title>
+  <link rel="stylesheet" href="/static/panel.css">
+</head>
+<body data-theme="light">
+  <header class="header">
+    <span class="brand">{{ t('app.name') }} — {{ t('share.title') }}</span>
+  </header>
+  <main class="container">
+    <h1>{{ t('share.title') }}</h1>
+    {% if error == 'not_found' %}
+    <p>{{ t('share.not_found') }}</p>
+    {% elif error == 'unavailable' %}
+    <p>{{ t('share.unavailable') }}</p>
+    {% elif error == 'config_unavailable' %}
+    <p>{{ t('share.config_unavailable') }}</p>
+    {% else %}
+    <p>{{ t('share.not_found') }}</p>
+    {% endif %}
+  </main>
+</body>
+</html>

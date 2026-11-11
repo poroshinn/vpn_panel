@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{ t('share.title') }}</title>
+  <link rel="stylesheet" href="/static/panel.css">
+</head>
+<body data-theme="light">
+  <header class="header">
+    <span class="brand">{{ t('app.name') }} — {{ t('share.title') }}</span>
+  </header>
+  <main class="container">
+    <h1>{{ t('share.title') }}</h1>
+    <p>{{ t('share.owner') }}: {{ owner.username }}</p>
+    {% if connections %}
+    <table class="data">
+      <thead>
+        <tr>
+          <th>{{ t('my.name') }}</th>
+          <th>{{ t('my.server') }}</th>
+          <th>{{ t('common.actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in connections %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td>{{ c.server_name or c.server_id }}</td>
+          <td>
+            <a class="btn secondary" href="/share/{{ token }}/download/{{ c.id }}?format=conf">{{ t('my.download_conf') }}</a>
+            <a class="btn secondary" href="/share/{{ token }}/download/{{ c.id }}?format=qr">{{ t('my.show_qr') }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>{{ t('share.empty') }}</p>
+    {% endif %}
+  </main>
+</body>
+</html>
