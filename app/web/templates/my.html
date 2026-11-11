@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ t('my.title') }} — {{ t('app.name') }}{% endblock %}
+{% block content %}
+<h1>{{ t('my.title') }}</h1>
+{% if connections %}
+<table class="data">
+  <thead>
+    <tr>
+      <th>{{ t('my.name') }}</th>
+      <th>{{ t('my.server') }}</th>
+      <th>{{ t('my.created') }}</th>
+      <th>{{ t('common.actions') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in connections %}
+    <tr data-server="{{ c.server_id }}" data-conn="{{ c.id }}">
+      <td>{{ c.name }}</td>
+      <td><a href="/servers/{{ c.server_id }}">{{ c.server_name or c.server_id }}</a></td>
+      <td>{{ fmt_dt(c.created_at) }}</td>
+      <td>
+        <a class="btn secondary" href="/api/v1/servers/{{ c.server_id }}/connections/{{ c.id }}/config?format=conf">{{ t('my.download_conf') }}</a>
+        <button class="btn secondary" type="button" onclick="showQr({{ c.server_id }}, {{ c.id }})">{{ t('my.show_qr') }}</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>{{ t('my.empty') }}</p>
+{% endif %}
+
+<div class="modal-backdrop" id="qr-modal">
+  <div class="modal">
+    <h3>{{ t('my.show_qr') }}</h3>
+    <div id="qr-image" style="text-align:center"></div>
+    <div style="margin-top:16px; text-align:right">
+      <button class="btn secondary" type="button" onclick="document.getElementById('qr-modal').classList.remove('open')">{{ t('common.close') }}</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+window.showQr = async function(serverId, connId) {
+  const resp = await fetch(`/api/v1/servers/${serverId}/connections/${connId}/config`);
+  if (!resp.ok) return;
+  const bundle = await resp.json();
+  document.getElementById('qr-image').innerHTML =
+    `<img src="data:image/png;base64,${bundle.qr_png_base64}" alt="QR" width="280" height="280">`;
+  document.getElementById('qr-modal').classList.add('open');
+};
+</script>
+{% endblock %}

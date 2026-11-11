@@ -15,7 +15,7 @@
 | 06 | [mvp-06-protocols-peers.md](tasks/mvp-06-protocols-peers.md) | M5 | ✅ done | 2026-11-10 | Пресеты (awg-3x/2x/legacy, wg; junk S1/S2/I1–I5, BBR, compose-шаблон), installer (мульти-инстансы `awg2__2`, идемпотентный compose up/down, неопределённые исходы → `lifecycle_uncertain`, 502), peers (operation_id-идемпотентность в `peer_creations`, ретрай с сохранённым client_id, lifecycle-lock на (server, instance), rename/enable/disable/delete, tombstone в `accounting_recoveries`), configs (.conf-санитайзер, QR PNG, vpn:// roundtrip), API `/presets`, `/servers/{id}/protocols`, `/servers/{id}/connections`, `/connections/{id}/config?format=conf|qr`; 124 теста зелёных |
 | 07 | [mvp-07-accounting.md](tasks/mvp-07-accounting.md) | M6 | ✅ done | 2026-11-10 | Fail-closed учёт трафика: миграция 0002 (epoch_hash, базлайны rx/tx, lifetime, last_sample_at, counters_verified_final, traffic_reset_month); `app/accounting/` — epochs (SHA-256 хэш эпохи из container/PID/started/boot_id/ifindex/inode:ctime, парсер `awg show transfer`), collector (опрос метаданных до/после transfer, дедупликация владельцев алиасов), service (фоновый цикл 60с [30–300], базлайны переживают рестарт, gap-детекция epoch_changed/counter_reset → tombstone `accounting_recoveries` без обнуления итогов, квоты UTC + auto-disable `quota`, месячный сброс), finalization (FR-3.11.4: чтение счётчиков при отвязке, дельта + tombstone verified, fail-closed 409 can_force / allow_unverified); API `/api/v1/accounting`, `/users/{id}/accounting|quota`, `/accounting/reset-month`, `/servers/{id}/connections/{id}/finalize` (роли §2.2, audit); 147 тестов зелёных, ruff чист по новым файлам |
 | 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ✅ done | 2026-11-11 | Пользователи панели: `app/users/service.py` (CRUD FR-3.6.1 — роль/пароль обязателен кроме none/telegram/квота/expiration, защита последнего admin), enable/disable одной кнопкой с автоинвалидацией FR-3.6.4 (сессии — сверка с БД на каждом запросе, Bearer-токены — hook `TokenRevocationHook` для MVP-11), привязка подключений FR-3.6.2 и отвязка владельца FR-3.6.3 (активный peer → stop на ноде + финализация; нечитаемый счётчик → 409 can_force / allow_unverified), экспорт подключений FR-3.6.5 (admin/support); API `/api/v1/users/...` (роли §2.2, audit-события user.created/updated/enabled/disabled/deleted, connection.assigned/unlinked, user.export); 7 integration-тестов (CRUD, мгновенная инвалидация сессии на disable и role=none, unlink через stop с verified-финализацией, fail-closed 409, матрица экспорта, audit); 154 теста зелёных, ruff чист по новым файлам |
-| 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ⬜ todo | — | |
+| 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ✅ done | 2026-11-11 | i18n (en/ru, fallback en, CLDR-плурализация, cookie→Accept-Language→en); SSE /api/v1/events (EventHub, queue 256, дроп при переполнении, keep-alive 15с, retry 3с); дизайн-система (CSS-переменные, светлая/тёмная тема через cookie, мобильная tab-панель, base.html); страницы: дашборд (SSE+polling-fallback), сервер (ping/статистика), /my (свои подключения, conf/QR), настройки (вкладки: внешний вид, CAPTCHA/бэкапы/алерты — заглушки); noindex/no-follow meta на всех страницах + /robots.txt Disallow:/; статика с max-age; 193 теста зелёных, ruff чист |
 | 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ⬜ todo | — | |
 | 11 | [mvp-11-backups.md](tasks/mvp-11-backups.md) | M10 | ⬜ todo | — | |
 | 12 | [mvp-12-api-tokens.md](tasks/mvp-12-api-tokens.md) | M11 | ⬜ todo | — | |
@@ -26,6 +26,38 @@
 Задачи будут декомпозированы из `plans/roadmap.md` после закрытия MVP.
 
 ## Заметки
+
+- 2026-11-11 — MVP-09: `app/i18n/catalog.py` (Catalog с fallback на en,
+  CLDR-плурализация ru one/few/many, detect_locale: cookie `awp_lang` →
+  Accept-Language → en; format_datetime_utc/format_bytes), ключи в
+  `app/i18n/{en,ru}.json`. `app/web/sse.py` — EventHub (process-local
+  pub/sub, asyncio.Queue maxsize=256, дроп при переполнении,Event.to_sse);
+  `app/api/routes/events.py` — GET /api/v1/events (require_session,
+  StreamingResponse, keep-alive каждые 15с, retry:3000,unsubscribe в finally).
+  Дизайн-система: `app/web/static/panel.css` (CSS-переменные, [data-theme=dark],
+  адаптив @media 640px — нижняя tab-панель вместо горизонтальной навигации),
+  `app/web/static/sse.js` (EventSource + подключение именованных типов
+  server.status/operation.progress/traffic.sample, fallback на polling после
+  4 ошибок). `base.html` — общий каркас (навигация по роли, переключатель
+  темы через cookie `awp_theme`, noindex/no-folloow meta). Страницы:
+  dashboard.html (карточки, SSE-обновление ping с polling-фолбэком),
+  server_detail.html (ping, host-stats, reboot для admin), my.html
+  (таблица подключений пользователя + conf-скачивание/QR-модалка через
+  /api/v1/.../config), settings.html (вкладки: внешний вид — язык/тема;
+  CAPTCHA/бэкапы/алерты — заглушки «позже»). login.html/change_password.html
+  переведены на base.html (skip_header). pages.py — _render() инжектит
+  t/plural/fmt_dt/locale/theme во все шаблоны; /robots.txt; /static/* с
+  Cache-Control: max-age=3600 (Cache-Control: no-store для SSE-ответа).
+  Тесты: unit test_i18n.py (19: категории plural ru/en, fallback, детекция
+  локали, форматирование) + test_sse_hub.py (8: подписка/publish/отписка/
+  переполнение/мульти-подписчики/JSON-валидность/конкурентность) +
+  integration test_ui_sse_i18n.py (12: SSE 401 без сессии, i18n ru-cookie/
+  Accept-Language, /my только свои подключения + 302 аноним, 403 на чужой
+  конфиг, robots.txt, noindex-мета, статика cache-policy, вкладки настроек).
+  Отладка: httpx ASGITransport буферизует весь ответ — интеграционный тест
+  чтения бесконечного SSE-потока зависал; поведение хаба покрыто unit-тестами,
+  в integration оставлены только 401/auth/регистрация роута. Итог: 193 теста
+  зелёных; ruff по затронутым файлам чист.
 
 - 2026-11-11 — MVP-08: сервис `app/users/service.py` + API `app/api/routes/users.py`,
   подключены в `app/main.py` (`app.state.user_service`). Ключевые решения:

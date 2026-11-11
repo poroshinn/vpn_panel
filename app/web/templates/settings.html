@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ t('settings.title') }} — {{ t('app.name') }}{% endblock %}
+{% block content %}
+<h1>{{ t('settings.title') }}</h1>
+<div class="tabs" role="tablist">
+  <button type="button" class="active" data-tab="appearance">{{ t('settings.appearance') }}</button>
+  <button type="button" data-tab="captcha">{{ t('settings.captcha') }}</button>
+  <button type="button" data-tab="backups">{{ t('settings.backups') }}</button>
+  <button type="button" data-tab="alerts">{{ t('settings.alerts') }}</button>
+</div>
+
+<section id="tab-appearance">
+  <label class="field">
+    <span>{{ t('settings.language') }}</span>
+    <select id="lang-select">
+      <option value="en">English</option>
+      <option value="ru">Русский</option>
+    </select>
+  </label>
+  <label class="field">
+    <span>{{ t('settings.theme') }}</span>
+    <select id="theme-select">
+      <option value="light">{{ t('settings.theme.light') }}</option>
+      <option value="dark">{{ t('settings.theme.dark') }}</option>
+    </select>
+  </label>
+</section>
+<section id="tab-captcha" hidden><p>{{ t('settings.placeholder') }}</p></section>
+<section id="tab-backups" hidden><p>{{ t('settings.placeholder') }}</p></section>
+<section id="tab-alerts" hidden><p>{{ t('settings.placeholder') }}</p></section>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+document.querySelectorAll('.tabs button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('main.page section[id^="tab-"]').forEach(
+      (sec) => { sec.hidden = sec.id !== `tab-${btn.dataset.tab}`; });
+  });
+});
+
+const lang = document.getElementById('lang-select');
+lang.value = '{{ locale }}';
+lang.addEventListener('change', () => {
+  document.cookie = `awp_lang=${lang.value};path=/;max-age=31536000;samesite=lax`;
+  location.reload();
+});
+
+const themeSel = document.getElementById('theme-select');
+themeSel.value = '{{ theme }}';
+themeSel.addEventListener('change', () => {
+  document.documentElement.dataset.theme = themeSel.value;
+  document.cookie = `awp_theme=${themeSel.value};path=/;max-age=31536000;samesite=lax`;
+});
+</script>
+{% endblock %}

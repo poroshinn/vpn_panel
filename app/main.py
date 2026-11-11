@@ -15,6 +15,7 @@ from app.accounting.finalization import FinalizationService
 from app.accounting.service import POLL_INTERVAL_DEFAULT, AccountingService
 from app.api.routes.accounting import router as accounting_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.events import router as events_router
 from app.api.routes.protocols import router as protocols_router
 from app.api.routes.servers import router as servers_router
 from app.api.routes.users import router as users_router
@@ -29,6 +30,7 @@ from app.ssh.pool import SSHPool
 from app.ssh.probes import NodeProber
 from app.users.service import UserService
 from app.web.pages import router as pages_router
+from app.web.sse import EventHub
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ async def lifespan(app: FastAPI):
     setup_logging()
     settings = get_settings()
     Path(settings.db_file).parent.mkdir(parents=True, exist_ok=True)
+    app.state.event_hub = EventHub()
 
     db = Database()
     await db.connect()
@@ -87,6 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(protocols_router)
     app.include_router(accounting_router)
     app.include_router(users_router)
+    app.include_router(events_router)
     app.include_router(pages_router)
 
     @app.get("/health", tags=["system"])

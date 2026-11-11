@@ -1,64 +1,26 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Amnezia Web Panel — Dashboard</title>
-<style>
-  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6f8; }
-  header { background: #1f2937; color: #fff; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
-  header a { color: #93c5fd; text-decoration: none; margin-left: 16px; }
-  main { max-width: 960px; margin: 24px auto; padding: 0 16px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
-  .card h3 { margin: 0 0 8px; }
-  .card a { color: inherit; text-decoration: none; }
-  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #9ca3af; }
-  .dot.up { background: #22c55e; }
-  .dot.down { background: #ef4444; }
-  .meta { color: #6b7280; font-size: 0.9em; }
-  .btn { display: inline-block; padding: 8px 14px; background: #2563eb; color: #fff; border: 0; border-radius: 6px; cursor: pointer; text-decoration: none; }
-</style>
-</head>
-<body>
-<header>
-  <span><strong>Amnezia Web Panel</strong></span>
-  <nav>
-    {% if role == 'admin' %}<a href="/servers/new">+ Add server</a>{% endif %}
-    <a href="/api/auth/logout">Logout</a>
-  </nav>
-</header>
-<main>
-  <h1>Servers</h1>
-  <div id="servers" class="grid">
-    {% for s in servers %}
-    <div class="card" data-uid="{{ s.uid }}">
-      <h3><a href="/servers/{{ s.id }}">{{ s.name }}</a></h3>
-      <div><span class="dot" data-host="{{ s.host }}" data-port="{{ s.ssh_port }}"></span><span class="ping-label">checking…</span></div>
-      <div class="meta">{{ s.host }}:{{ s.ssh_port }} · {{ s.username }}</div>
-    </div>
-    {% else %}
-    <p>No servers yet. {% if role == 'admin' %}<a href="/servers/new">Add the first one</a>.{% endif %}</p>
-    {% endfor %}
+{% extends "base.html" %}
+{% block title %}{{ t('dashboard.title') }} — {{ t('app.name') }}{% endblock %}
+{% block content %}
+<h1>{{ t('dashboard.title') }}</h1>
+<div id="servers" class="grid">
+  {% for s in servers %}
+  <div class="card" data-id="{{ s.id }}">
+    <h3><a href="/servers/{{ s.id }}">{{ s.name }}</a></h3>
+    <div><span class="dot" data-host="{{ s.host }}" data-port="{{ s.ssh_port }}"></span><span class="ping-label">{{ t('dashboard.checking') }}</span></div>
+    <div class="meta">{{ s.host }}:{{ s.ssh_port }} · {{ s.username }}</div>
   </div>
-</main>
-<script>
-// Polling ping-индикаторов (SSE — в MVP-08)
-async function checkCard(card) {
-  const dot = card.querySelector('.dot');
-  const label = card.querySelector('.ping-label');
-  const host = dot.dataset.host, port = dot.dataset.port;
-  try {
-    const resp = await fetch('/api/v1/servers');
-    // ping выполняется по id; здесь упрощённо — по списку id из карточек
-  } catch (e) { /* сеть недоступна */ }
-}
-// polling: периодическая перезагрузка ping-статусов через API
-setInterval(async () => {
-  for (const card of document.querySelectorAll('.card[data-uid]')) {
-    const link = card.querySelector('a[href^="/servers/"]');
-    if (!link) continue;
-    const id = link.getAttribute('href').split('/').pop();
+  {% else %}
+  <p>{{ t('dashboard.empty') }} {% if role == 'admin' %}<a href="/servers/new">{{ t('dashboard.add_first') }}</a>.{% endif %}</p>
+  {% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+import { connectEvents, startPolling } from '/static/sse.js';
+
+async function refreshPings() {
+  for (const card of document.querySelectorAll('.card[data-id]')) {
+    const id = card.dataset.id;
     try {
       const resp = await fetch(`/api/v1/servers/${id}/ping`);
       if (!resp.ok) continue;
@@ -66,10 +28,26 @@ setInterval(async () => {
       const dot = card.querySelector('.dot');
       const label = card.querySelector('.ping-label');
       dot.className = 'dot ' + (data.reachable ? 'up' : 'down');
-      label.textContent = data.reachable ? `${data.rtt_ms} ms` : 'unreachable';
-    } catch (e) { /* ignore */ }
+      label.textContent = data.reachable ? `${data.rtt_ms} ms` : '{{ t('dashboard.unreachable') }}';
+    } catch { /* network */ }
   }
-}, 5000);
+}
+
+// SSE — основной канал; polling — fallback (FR-3.13.11)
+let stopPolling = null;
+connectEvents({
+  onEvent: (ev) => {
+    if (ev.type !== 'server.status') return;
+    const card = document.querySelector(`.card[data-id="${ev.server_id}"]`);
+    if (!card) return;
+    const dot = card.querySelector('.dot');
+    const label = card.querySelector('.ping-label');
+    dot.className = 'dot ' + (ev.reachable ? 'up' : 'down');
+    label.textContent = ev.reachable ? `${ev.rtt_ms} ms` : '{{ t('dashboard.unreachable') }}';
+  },
+  onFallback: () => { if (!stopPolling) stopPolling = startPolling(5000, refreshPings); },
+});
+// первичный опрос + страховочный интервал при живом SSE не нужен;
+// но если SSE молчит, fallback включится сам
 </script>
-</body>
-</html>
+{% endblock %}

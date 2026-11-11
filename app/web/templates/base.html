@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}" data-theme="{{ theme }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}{{ t('app.name') }}{% endblock %}</title>
+<link rel="stylesheet" href="/static/panel.css">
+</head>
+<body>
+{% if not skip_header %}
+<header class="app-header">
+  <a class="brand" href="/">{{ t('app.name') }}</a>
+  <nav class="desktop-only">
+    <a href="/" class="{{ 'active' if active_nav == 'dashboard' }}">{{ t('nav.dashboard') }}</a>
+    <a href="/my" class="{{ 'active' if active_nav == 'my' }}">{{ t('nav.my') }}</a>
+    {% if role in ('admin', 'support') %}
+    <a href="/settings" class="{{ 'active' if active_nav == 'settings' }}">{{ t('nav.settings') }}</a>
+    {% endif %}
+    {% if role == 'admin' %}
+    <a href="/servers/new">{{ t('servers.add') }}</a>
+    {% endif %}
+    <button type="button" id="theme-toggle" title="theme">{{ '🌙' if theme == 'light' else '☀️' }}</button>
+    <form method="post" action="/api/auth/logout" style="display:inline">
+      <button type="submit">{{ t('nav.logout') }}</button>
+    </form>
+  </nav>
+</header>
+<nav class="tabbar">
+  <a href="/" class="{{ 'active' if active_nav == 'dashboard' }}">{{ t('nav.dashboard') }}</a>
+  <a href="/my" class="{{ 'active' if active_nav == 'my' }}">{{ t('nav.my') }}</a>
+  {% if role in ('admin', 'support') %}
+  <a href="/settings" class="{{ 'active' if active_nav == 'settings' }}">{{ t('nav.settings') }}</a>
+  {% endif %}
+</nav>
+{% endif %}
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+<script type="module">
+// Тема: cookie awp_theme=light|dark; переключение — кнопкой в шапке.
+const toggle = document.getElementById('theme-toggle');
+if (toggle) {
+  toggle.addEventListener('click', () => {
+    const cur = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = cur;
+    document.cookie = `awp_theme=${cur};path=/;max-age=31536000;samesite=lax`;
+    toggle.textContent = cur === 'dark' ? '☀️' : '🌙';
+  });
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
