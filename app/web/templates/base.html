@@ -15,6 +15,7 @@
     <a href="/" class="{{ 'active' if active_nav == 'dashboard' }}">{{ t('nav.dashboard') }}</a>
     <a href="/my" class="{{ 'active' if active_nav == 'my' }}">{{ t('nav.my') }}</a>
     {% if role in ('admin', 'support') %}
+    <a href="/users" class="{{ 'active' if active_nav == 'users' }}">{{ t('nav.users') }}</a>
     <a href="/settings" class="{{ 'active' if active_nav == 'settings' }}">{{ t('nav.settings') }}</a>
     {% endif %}
     {% if role == 'admin' %}
@@ -30,6 +31,7 @@
   <a href="/" class="{{ 'active' if active_nav == 'dashboard' }}">{{ t('nav.dashboard') }}</a>
   <a href="/my" class="{{ 'active' if active_nav == 'my' }}">{{ t('nav.my') }}</a>
   {% if role in ('admin', 'support') %}
+  <a href="/users" class="{{ 'active' if active_nav == 'users' }}">{{ t('nav.users') }}</a>
   <a href="/settings" class="{{ 'active' if active_nav == 'settings' }}">{{ t('nav.settings') }}</a>
   {% endif %}
 </nav>

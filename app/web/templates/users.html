@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ t('users.title') }} — {{ t('app.name') }}{% endblock %}
+{% block content %}
+<h1>{{ t('users.title') }}</h1>
+
+{% if role == 'admin' %}
+<div class="card">
+  <div class="filters" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end">
+    <label class="field">
+      <span>{{ t('users.username') }}</span>
+      <input type="text" id="new-username" maxlength="64">
+    </label>
+    <label class="field">
+      <span>{{ t('users.role') }}</span>
+      <select id="new-role">
+        <option value="user">user</option>
+        <option value="support">support</option>
+        <option value="admin">admin</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>{{ t('users.password') }}</span>
+      <input type="password" id="new-password" autocomplete="new-password">
+    </label>
+    <button class="btn" type="button" id="btn-user-create">{{ t('users.create') }}</button>
+  </div>
+  <pre id="user-result" class="meta" style="white-space:pre-wrap"></pre>
+</div>
+{% endif %}
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>{{ t('users.username') }}</th>
+      <th>{{ t('users.role') }}</th>
+      <th>{{ t('users.enabled') }}</th>
+      <th>{{ t('users.created') }}</th>
+      {% if role == 'admin' %}<th>{{ t('common.actions') }}</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody id="users-rows">
+    <tr><td colspan="5">{{ t('common.loading') }}</td></tr>
+  </tbody>
+</table>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+const canEdit = {{ 'true' if role == 'admin' else 'false' }};
+const tbody = document.getElementById('users-rows');
+const userResult = document.getElementById('user-result');
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({'&':'&','<':'<','>':'>','"':'"',"'":'''}[c]));
+}
+
+async function loadUsers() {
+  try {
+    const res = await fetch('/api/v1/users');
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="5">Error ${res.status}</td></tr>`;
+      return;
+    }
+    const users = await res.json();
+    if (!users.length) {
+      tbody.innerHTML = `<tr><td colspan="5">{{ t('users.empty') }}</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = users.map((u) => `
+      <tr data-id="${u.id}">
+        <td>${esc(u.username)}</td>
+        <td>${esc(u.role)}</td>
+        <td class="user-enabled">${u.enabled ? '✔' : '✖'}</td>
+        <td>${esc(u.created_at ?? '')}</td>
+        ${canEdit ? `<td>
+          <button class="btn secondary btn-toggle" type="button">
+            ${u.enabled ? `{{ t('users.disable') }}` : `{{ t('users.enable') }}`}
+          </button>
+        </td>` : ''}
+      </tr>`).join('');
+    tbody.querySelectorAll('.btn-toggle').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const tr = btn.closest('tr');
+        const id = tr.dataset.id;
+        const turnOn = !btn.textContent.includes('{{ t('users.enable') }}');
+        const res2 = await fetch(`/api/v1/users/${id}/enabled`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: turnOn }),
+        });
+        if (res2.ok) loadUsers();
+        else userResult.textContent = `Error ${res2.status}: ${(await res2.json()).message ?? ''}`;
+      });
+    });
+  } catch { /* network */ }
+}
+
+const btnCreate = document.getElementById('btn-user-create');
+btnCreate?.addEventListener('click', async () => {
+  const username = document.getElementById('new-username').value.trim();
+  const role = document.getElementById('new-role').value;
+  const password = document.getElementById('new-password').value;
+  if (!username) return;
+  userResult.textContent = '…';
+  try {
+    const res = await fetch('/api/v1/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, role, password: password || undefined }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      userResult.textContent = `OK: ${data.username} (id=${data.id})`;
+      document.getElementById('new-username').value = '';
+      document.getElementById('new-password').value = '';
+      loadUsers();
+    } else {
+      userResult.textContent = `Error ${res.status}: ${data.message ?? ''}`;
+    }
+  } catch { userResult.textContent = 'Network error'; }
+});
+
+loadUsers();
+</script>
+{% endblock %}

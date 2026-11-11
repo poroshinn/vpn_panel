@@ -29,6 +29,27 @@
 <p class="meta">{{ t('servers.no_instances') }}</p>
 {% endif %}
 
+{% if role == 'admin' %}
+<h2>{{ t('servers.install_title') }}</h2>
+<div class="card" id="install-card">
+  <div class="filters" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end">
+    <label class="field">
+      <span>{{ t('servers.preset') }}</span>
+      <select id="install-preset"></select>
+    </label>
+    <label class="field">
+      <span>{{ t('servers.port') }}</span>
+      <input type="number" id="install-port" min="1" max="65535" placeholder="auto">
+    </label>
+    <label class="field" id="install-bbr-wrap" hidden>
+      <input type="checkbox" id="install-bbr"> BBR
+    </label>
+    <button class="btn" type="button" id="btn-install">{{ t('servers.install') }}</button>
+  </div>
+  <pre id="install-result" class="meta" style="white-space:pre-wrap"></pre>
+</div>
+{% endif %}
+
 <h2>{{ t('servers.host_stats') }}</h2>
 <div class="card" id="host-stats">
   <p class="meta">{{ t('common.loading') }}</p>
@@ -92,5 +113,60 @@ if (rebootBtn) {
     await fetch(`/api/v1/servers/${serverId}/reboot`, { method: 'POST' });
   });
 }
+
+{% if role == 'admin' %}
+// ---- Установка пресета (FR-3.2.1): маркетплейс → POST /protocols
+const presetSel = document.getElementById('install-preset');
+const portInput = document.getElementById('install-port');
+const bbrWrap = document.getElementById('install-bbr-wrap');
+const bbrInput = document.getElementById('install-bbr');
+const installResult = document.getElementById('install-result');
+
+async function loadPresets() {
+  try {
+    const resp = await fetch('/api/v1/protocols/presets');
+    if (!resp.ok) return;
+    const { items } = await resp.json();
+    presetSel.innerHTML = items.map((p) =>
+      `<option value="${p.preset_id}" data-port="${p.default_port}" data-bbr="${p.supports_bbr}">` +
+      `${p.title} (${p.protocol.toUpperCase()})</option>`).join('');
+    syncPreset();
+  } catch { /* network */ }
+}
+
+function syncPreset() {
+  const opt = presetSel.selectedOptions[0];
+  if (!opt) return;
+  portInput.placeholder = opt.dataset.port;
+  bbrWrap.hidden = opt.dataset.bbr !== 'true';
+}
+
+presetSel?.addEventListener('change', syncPreset);
+
+document.getElementById('btn-install')?.addEventListener('click', async () => {
+  const presetId = presetSel.value;
+  if (!presetId || !confirm(`Install ${presetSel.selectedOptions[0].text}?`)) return;
+  const body = { preset_id: presetId };
+  if (portInput.value) body.port = Number(portInput.value);
+  if (!bbrWrap.hidden && bbrInput.checked) body.bbr = true;
+  installResult.textContent = '…';
+  try {
+    const resp = await fetch(`/api/v1/servers/${serverId}/protocols`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    installResult.textContent = resp.ok
+      ? `OK: ${data.instance} @ :${data.port}`
+      : `Error ${resp.status}: ${data.message ?? ''}`;
+    if (resp.ok) setTimeout(() => location.reload(), 1200);
+  } catch (e) {
+    installResult.textContent = 'Network error';
+  }
+});
+
+loadPresets();
+{% endif %}
 </script>
 {% endblock %}

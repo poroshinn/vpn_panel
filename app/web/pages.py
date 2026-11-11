@@ -138,6 +138,20 @@ async def my_connections(request: Request) -> Response:
     )
 
 
+@router.get("/users", response_class=HTMLResponse)
+async def users_page(request: Request) -> Response:
+    """Управление пользователями (FR-3.6.1): admin — CRUD, support — просмотр."""
+    session = await _session_or_redirect(request)
+    if isinstance(session, RedirectResponse):
+        return session
+    if session.role not in ("admin", "support"):
+        return RedirectResponse(url="/", status_code=302)
+    return _render(
+        request, "users.html",
+        {"role": session.role, "active_nav": "users"},
+    )
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request) -> Response:
     session = await _session_or_redirect(request)
