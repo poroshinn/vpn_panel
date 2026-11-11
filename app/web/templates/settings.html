@@ -26,7 +26,55 @@
   </label>
 </section>
 <section id="tab-captcha" hidden><p>{{ t('settings.placeholder') }}</p></section>
-<section id="tab-backups" hidden><p>{{ t('settings.placeholder') }}</p></section>
+
+<section id="tab-backups" hidden>
+  <div class="card">
+    <h2>{{ t('backups.download.title') }}</h2>
+    <button type="button" id="btn-snapshot">{{ t('backups.download.create') }}</button>
+    <div id="snapshot-result"></div>
+  </div>
+  <div class="card">
+    <h2>{{ t('backups.restore.title') }}</h2>
+    <input type="file" id="restore-file" accept=".db,.gz">
+    <label class="field">
+      <span>{{ t('backups.restore.profile') }}</span>
+      <select id="restore-profile">
+        <option value="merge">{{ t('backups.restore.merge') }}</option>
+        <option value="full">{{ t('backups.restore.full') }}</option>
+      </select>
+    </label>
+    <label class="field" id="restore-confirm-field" hidden>
+      <span>{{ t('backups.restore.confirm') }}</span>
+      <input type="text" id="restore-confirm" autocomplete="off">
+    </label>
+    <button type="button" id="btn-preview">{{ t('backups.restore.preview') }}</button>
+    <button type="button" id="btn-restore">{{ t('backups.restore.run') }}</button>
+    <div id="restore-preview"></div>
+    <div id="restore-result"></div>
+  </div>
+  <div class="card">
+    <h2>{{ t('backups.telegram.title') }}</h2>
+    <label class="field">
+      <span>{{ t('backups.telegram.enabled') }}</span>
+      <input type="checkbox" id="tg-enabled">
+    </label>
+    <label class="field">
+      <span>{{ t('backups.telegram.time') }}</span>
+      <input type="time" id="tg-time">
+    </label>
+    <label class="field">
+      <span>{{ t('backups.telegram.bot_token') }}</span>
+      <input type="password" id="tg-token" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>{{ t('backups.telegram.chat_id') }}</span>
+      <input type="text" id="tg-chat">
+    </label>
+    <button type="button" id="btn-tg-save">{{ t('backups.telegram.save') }}</button>
+    <div id="tg-status"></div>
+  </div>
+</section>
+
 <section id="tab-alerts" hidden><p>{{ t('settings.placeholder') }}</p></section>
 {% endblock %}
 {% block scripts %}
@@ -52,5 +100,71 @@ themeSel.addEventListener('change', () => {
   document.documentElement.dataset.theme = themeSel.value;
   document.cookie = `awp_theme=${themeSel.value};path=/;max-age=31536000;samesite=lax`;
 });
+
+// ---- Backups tab (FR-3.11.1) — admin-only API, неактивна для остальных ролей
+{% if role == 'admin' %}
+const snapshotResult = document.getElementById('snapshot-result');
+document.getElementById('btn-snapshot')?.addEventListener('click', async () => {
+  const res = await fetch('/api/v1/backups/snapshot', {method: 'POST'});
+  snapshotResult.textContent = res.ok
+    ? `OK: ${(await res.json()).name}`
+    : `Error ${res.status}`;
+});
+
+const restoreFile = document.getElementById('restore-file');
+const profileSel = document.getElementById('restore-profile');
+const confirmField = document.getElementById('restore-confirm-field');
+profileSel.addEventListener('change', () => {
+  confirmField.hidden = profileSel.value !== 'full';
+});
+
+document.getElementById('btn-preview')?.addEventListener('click', async () => {
+  if (!restoreFile.files.length) return;
+  const fd = new FormData();
+  fd.append('file', restoreFile.files[0]);
+  const res = await fetch('/api/v1/backups/restore/preview', {method: 'POST', body: fd});
+  document.getElementById('restore-preview').textContent = JSON.stringify(await res.json(), null, 2);
+});
+
+document.getElementById('btn-restore')?.addEventListener('click', async () => {
+  if (!restoreFile.files.length) return;
+  const fd = new FormData();
+  fd.append('file', restoreFile.files[0]);
+  const full = profileSel.value === 'full';
+  const params = new URLSearchParams({keep_protected: String(!full)});
+  if (full) params.set('confirm_text', document.getElementById('restore-confirm').value);
+  const res = await fetch(`/api/v1/backups/restore?${params}`, {method: 'POST', body: fd});
+  document.getElementById('restore-result').textContent = JSON.stringify(await res.json(), null, 2);
+});
+
+// Telegram autobackup config
+const tgEnabled = document.getElementById('tg-enabled');
+const tgTime = document.getElementById('tg-time');
+const tgToken = document.getElementById('tg-token');
+const tgChat = document.getElementById('tg-chat');
+const tgStatus = document.getElementById('tg-status');
+
+fetch('/api/v1/backups/telegram/config').then(async (res) => {
+  if (!res.ok) return;
+  const cfg = await res.json();
+  tgEnabled.checked = cfg.enabled;
+  tgTime.value = cfg.send_time_utc;
+  tgStatus.textContent = cfg.telegram_configured ? '' : "{{ t('backups.telegram.not_configured') }}";
+  if (cfg.last_error) tgStatus.textContent += ` (${cfg.last_error})`;
+});
+
+document.getElementById('btn-tg-save')?.addEventListener('click', async () => {
+  const body = {enabled: tgEnabled.checked, send_time_utc: tgTime.value || null};
+  if (tgToken.value) body.bot_token = tgToken.value;
+  if (tgChat.value) body.chat_id = tgChat.value;
+  const res = await fetch('/api/v1/backups/telegram/config', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  tgStatus.textContent = res.ok ? 'OK' : `Error ${res.status}`;
+  tgToken.value = '';
+});
+{% endif %}
 </script>
 {% endblock %}

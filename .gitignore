@@ -14,7 +14,7 @@ htmlcov/
 # Данные панели (не коммитить!)
 data/
 logs/
-backups/
+/backups/
 *.db
 *.db.gz
 *.db-wal

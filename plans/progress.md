@@ -17,7 +17,7 @@
 | 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ✅ done | 2026-11-11 | Пользователи панели: `app/users/service.py` (CRUD FR-3.6.1 — роль/пароль обязателен кроме none/telegram/квота/expiration, защита последнего admin), enable/disable одной кнопкой с автоинвалидацией FR-3.6.4 (сессии — сверка с БД на каждом запросе, Bearer-токены — hook `TokenRevocationHook` для MVP-11), привязка подключений FR-3.6.2 и отвязка владельца FR-3.6.3 (активный peer → stop на ноде + финализация; нечитаемый счётчик → 409 can_force / allow_unverified), экспорт подключений FR-3.6.5 (admin/support); API `/api/v1/users/...` (роли §2.2, audit-события user.created/updated/enabled/disabled/deleted, connection.assigned/unlinked, user.export); 7 integration-тестов (CRUD, мгновенная инвалидация сессии на disable и role=none, unlink через stop с verified-финализацией, fail-closed 409, матрица экспорта, audit); 154 теста зелёных, ruff чист по новым файлам |
 | 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ✅ done | 2026-11-11 | i18n (en/ru, fallback en, CLDR-плурализация, cookie→Accept-Language→en); SSE /api/v1/events (EventHub, queue 256, дроп при переполнении, keep-alive 15с, retry 3с); дизайн-система (CSS-переменные, светлая/тёмная тема через cookie, мобильная tab-панель, base.html); страницы: дашборд (SSE+polling-fallback), сервер (ping/статистика), /my (свои подключения, conf/QR), настройки (вкладки: внешний вид, CAPTCHA/бэкапы/алерты — заглушки); noindex/no-follow meta на всех страницах + /robots.txt Disallow:/; статика с max-age; 193 теста зелёных, ruff чист |
 | 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ✅ done | 2026-11-11 | Share-токены (стабильные) + пароль argon2; rotate/revoke с audit; публичная /share/{token} (список подключений + conf/QR теми же генераторами MVP-06); share-сессия — HMAC-cookie с ревизией (смена пароля/токена/токена-ревокации мгновенно закрывает сессию); rate-limit попыток пароля (10/60с); noindex/no-store; 7 integration-тестов; 200 тестов зелёных, ruff чист |
-| 11 | [mvp-11-backups.md](tasks/mvp-11-backups.md) | M10 | ⬜ todo | — | |
+| 11 | [mvp-11-backups.md](tasks/mvp-11-backups.md) | M10 | ✅ done | 2026-11-11 | Снапшоты VACUUM INTO под writer-lock + gzip + sha256; ротация 7 файлов (local/pre-restore/manual/pre-migrate); Telegram: ежедневная задача (UTC), лимит 50 MiB, деградация в local + audit auto_failed при ненастроенном боте; restore: единый валидатор (gzip/SQLite header/integrity/схема), превью, пред-restore снапшот, атомарная замена + переоткрытие соединения, protected-профиль (merge по умолчанию; полное восстановление только с confirm «restore», попытка отмотки ⇒ 409), автооткат при сбое; API /api/v1/backups + вкладка «Бэкапы» в настройках; 25 новых тестов; 225 зелёных, ruff чист по новым файлам |
 | 12 | [mvp-12-api-tokens.md](tasks/mvp-12-api-tokens.md) | M11 | ⬜ todo | — | |
 | 13 | [mvp-13-observability-alerts.md](tasks/mvp-13-observability-alerts.md) | M12 | ⬜ todo | — | Финал MVP: acceptance по разделу 8 ТЗ |
 
@@ -26,6 +26,41 @@
 Задачи будут декомпозированы из `plans/roadmap.md` после закрытия MVP.
 
 ## Заметки
+
+- 2026-11-11 — MVP-11: `app/backups/snapshot.py` — make_snapshot:
+  `VACUUM INTO` под writer-lock панели (asyncio.to_thread) — консистентный
+  снапшот без остановки writer'а; затем gzip (tmp+replace), sha256, ротация
+  `backups/{local,pre-restore,manual,pre-migrate}` (keep=7). Snapshot(path,
+  sha256, size). `app/backups/telegram.py` — настройки в settings
+  (backup_telegram_enabled/time/bot_token/chat_id; токен never-echo);
+  run_daily_backup: не настроен бот/превышен лимит 50 MiB ⇒ деградация в
+  локальную ротацию + audit backup.auto_failed (FR-3.10.13); запись в
+  recovery_snapshots (kind='auto'); BackupScheduler — фоновая задача с
+  проверкой раз в 60с, один прогон в сутки по UTC. `app/backups/restore.py`
+  — один валидатор для панели и Telegram (FR-3.11.7): gzip.decompress →
+  заголовок SQLite → PRAGMA integrity_check → наличие таблиц → версия схемы
+  (новее текущей ⇒ 409 schema_newer). RestoreService.apply: детекция отмотки
+  защищённых записей (SUM lifetime/traffic_used) ⇒ без текст-подтверждения
+  «restore» — 409 protected_records (FR-3.11.3); обязательный пред-restore
+  снапшот; атомарная замена файла БД (merge защищённых полей в candidate
+  через отдельное sqlite3-соединение, unlink -wal/-shm, replace) + close/
+  connect — writer-lock панели не реентерабелен, поэтому db.transaction()
+  внутри ручного _write_lock вызывает дедлок; merge делается ДО замены.
+  Ошибка после замены ⇒ автооткат из пред-restore снапшота. Protected
+  (merge-профиль): user_connections rx_base/tx_base/lifetime_*/last_sample_at/
+  counters_verified_final, users traffic_used/traffic_limit/expiration/
+  traffic_reset_month. API `app/api/routes/backups.py` — POST /snapshot,
+  GET /snapshots (+/{group}/{name} с guard на path traversal),
+  POST /restore/preview, POST /restore (admin-only, audit backup.*),
+  GET/PUT /telegram/config (токен не эхоится), POST /telegram/run.
+  UI: вкладка «Бэкапы» в settings.html; i18n-ключи backups.* (en/ru).
+  Тесты: `tests/unit/test_backups_validate.py` (11 — gzip/SQLite-валидатор,
+  integrity, версии схемы, ротация), `tests/integration/test_backups.py`
+  (14 — snapshot API + роли, restore roundtrip §5.6, 409 без подтверждения,
+  merge сохраняет счётчики, schema_newer, invalid_file, Telegram-формат тем
+  же валидатором, пред-restore снапшот, деградация local без бота, skip
+  при disabled, never-echo токена, save+run). Итог: 225 тестов зелёных;
+  ruff по затронутым файлам чист.
 
 - 2026-11-11 — MVP-10: `app/sharing/service.py` — ShareService: setup_share
   (токен стабилен, повторный setup не меняет ссылку; пароль argon2-хэшем;

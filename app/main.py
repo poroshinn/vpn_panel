@@ -12,6 +12,9 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from app.accounting.finalization import FinalizationService
+from app.api.routes.backups import router as backups_router
+from app.backups.restore import RestoreService
+from app.backups.telegram import BackupScheduler
 from app.accounting.service import POLL_INTERVAL_DEFAULT, AccountingService
 from app.api.routes.accounting import router as accounting_router
 from app.api.routes.auth import router as auth_router
@@ -78,8 +81,12 @@ async def lifespan(app: FastAPI):
         db, app.state.ssh_pool, app.state.server_service, app.state.peer_service,
         poll_interval=poll_interval,
     )
+    app.state.restore_service = RestoreService(db, Path(settings.backup_dir))
     app.state.accounting_service.start()
+    app.state.backup_scheduler = BackupScheduler(db)
+    app.state.backup_scheduler.start()
     yield
+    await app.state.backup_scheduler.stop()
     await app.state.accounting_service.stop()
     await app.state.ssh_pool.close_all()
     await db.close()
@@ -95,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(protocols_router)
     app.include_router(accounting_router)
     app.include_router(users_router)
+    app.include_router(backups_router)
     app.include_router(sharing_router)
     app.include_router(events_router)
     app.include_router(pages_router)
