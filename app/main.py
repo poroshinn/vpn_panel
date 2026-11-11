@@ -14,13 +14,17 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from app.accounting.finalization import FinalizationService
 from app.accounting.service import POLL_INTERVAL_DEFAULT, AccountingService
+from app.alerts.monitor import ObservabilityMonitor
 from app.api.routes.accounting import router as accounting_router
+from app.api.routes.audit import router as audit_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.backups import router as backups_router
 from app.api.routes.events import router as events_router
 from app.api.routes.protocols import router as protocols_router
 from app.api.routes.servers import router as servers_router
+from app.api.routes.settings import router as settings_router
 from app.api.routes.sharing import router as sharing_router
+from app.api.routes.system import router as system_router
 from app.api.routes.tokens import router as tokens_router
 from app.api.routes.users import router as users_router
 from app.auth.tokens import TokenService
@@ -43,14 +47,6 @@ from app.web.pages import router as pages_router
 from app.web.sse import EventHub
 
 logger = logging.getLogger(__name__)
-
-
-async def _db_healthy(db: Database) -> bool:
-    try:
-        await db.fetch_one("SELECT 1")
-        return True
-    except Exception:  # noqa: BLE001
-        return False
 
 
 @asynccontextmanager
@@ -98,7 +94,10 @@ async def lifespan(app: FastAPI):
     app.state.accounting_service.start()
     app.state.backup_scheduler = BackupScheduler(db)
     app.state.backup_scheduler.start()
+    app.state.observability_monitor = ObservabilityMonitor(db, app.state.server_service)
+    app.state.observability_monitor.start()
     yield
+    await app.state.observability_monitor.stop()
     await app.state.backup_scheduler.stop()
     await app.state.accounting_service.stop()
     await app.state.ssh_pool.close_all()
@@ -134,6 +133,9 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(tokens_router)
     app.include_router(backups_router)
+    app.include_router(settings_router)
+    app.include_router(audit_router)
+    app.include_router(system_router)
     app.include_router(sharing_router)
     app.include_router(events_router)
     app.include_router(pages_router)
@@ -175,13 +177,6 @@ def create_app() -> FastAPI:
                    include_in_schema=False)
     async def api_alias(rest: str) -> RedirectResponse:
         return RedirectResponse(url=f"/api/v1/{rest}", status_code=307)
-
-    @app.get("/health", tags=["system"])
-    async def health() -> dict:
-        """Health-check (FR-3.16.1): живость + состояние БД."""
-        db: Database = app.state.db
-        ok = await _db_healthy(db)
-        return {"status": "ok" if ok else "degraded", "database": "up" if ok else "down"}
 
     return app
 

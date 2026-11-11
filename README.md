@@ -38,6 +38,12 @@ docker compose up -d --build
 
 Volume `amnezia_data` хранит `panel.db`, `ssh_known_hosts`, бэкапы и логи.
 
+## Развёртывание на сервере
+
+Полная инструкция — [`docs/deployment.md`](docs/deployment.md): Docker Compose
+и bare-metal (systemd), nginx + HTTPS, переменные окружения, алерты Telegram,
+чеклист готовности к продакшн.
+
 ## Структура
 
 ```

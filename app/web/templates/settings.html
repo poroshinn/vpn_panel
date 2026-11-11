@@ -7,6 +7,9 @@
   <button type="button" data-tab="captcha">{{ t('settings.captcha') }}</button>
   <button type="button" data-tab="backups">{{ t('settings.backups') }}</button>
   <button type="button" data-tab="alerts">{{ t('settings.alerts') }}</button>
+  {% if role in ('admin', 'support') %}
+  <button type="button" data-tab="audit">{{ t('audit.title') }}</button>
+  {% endif %}
 </div>
 
 <section id="tab-appearance">
@@ -24,8 +27,33 @@
       <option value="dark">{{ t('settings.theme.dark') }}</option>
     </select>
   </label>
+  {% if role == 'admin' %}
+  <label class="field">
+    <span>{{ t('settings.panel_title') }}</span>
+    <input type="text" id="panel-title" maxlength="100" autocomplete="off">
+  </label>
+  <label class="field">
+    <span>{{ t('settings.panel_subtitle') }}</span>
+    <input type="text" id="panel-subtitle" maxlength="200" autocomplete="off">
+  </label>
+  <label class="field">
+    <span>{{ t('settings.panel_logo') }}</span>
+    <input type="url" id="panel-logo" maxlength="500" autocomplete="off"
+           placeholder="/static/logo.svg">
+  </label>
+  <button type="button" id="btn-appearance-save">{{ t('backups.telegram.save') }}</button>
+  <div id="appearance-status"></div>
+  {% endif %}
 </section>
-<section id="tab-captcha" hidden><p>{{ t('settings.placeholder') }}</p></section>
+
+<section id="tab-captcha" hidden>
+  <label class="field">
+    <span>{{ t('settings.captcha.enabled') }}</span>
+    <input type="checkbox" id="captcha-enabled">
+  </label>
+  <button type="button" id="btn-captcha-save">{{ t('backups.telegram.save') }}</button>
+  <div id="captcha-status"></div>
+</section>
 
 <section id="tab-backups" hidden>
   <div class="card">
@@ -75,7 +103,106 @@
   </div>
 </section>
 
-<section id="tab-alerts" hidden><p>{{ t('settings.placeholder') }}</p></section>
+<section id="tab-alerts" hidden>
+  {% if role == 'admin' %}
+  <div class="card">
+    <h2>{{ t('settings.alerts.telegram') }}</h2>
+    <label class="field">
+      <span>{{ t('backups.telegram.bot_token') }}</span>
+      <input type="password" id="alert-token" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>{{ t('backups.telegram.chat_id') }}</span>
+      <input type="text" id="alert-chat">
+    </label>
+    <button type="button" id="btn-alert-test">{{ t('settings.alerts.test') }}</button>
+    <div id="alert-config-status"></div>
+  </div>
+  <div class="card">
+    <h2>{{ t('settings.alerts.toggles') }}</h2>
+    {% for key, label in [
+      ('server_down', 'settings.alerts.server_down'),
+      ('quota_exhausted', 'settings.alerts.quota_exhausted'),
+      ('ssl_expiry', 'settings.alerts.ssl_expiry'),
+      ('backup_failed', 'settings.alerts.backup_failed'),
+      ('accounting_gap', 'settings.alerts.accounting_gap'),
+    ] %}
+    <label class="field">
+      <span>{{ t(label) }}</span>
+      <input type="checkbox" class="alert-toggle" data-alert="{{ key }}">
+    </label>
+    {% endfor %}
+    <label class="field">
+      <span>{{ t('settings.alerts.server_down_minutes') }}</span>
+      <input type="number" id="alert-down-minutes" min="1" max="1440" value="5">
+    </label>
+    <label class="field">
+      <span>{{ t('settings.alerts.ssl_cert_path') }}</span>
+      <input type="text" id="alert-ssl-path" autocomplete="off"
+             placeholder="/etc/letsencrypt/live/panel/fullchain.pem">
+    </label>
+    <button type="button" id="btn-alerts-save">{{ t('backups.telegram.save') }}</button>
+    <div id="alerts-status"></div>
+  </div>
+  {% else %}
+  <p>{{ t('settings.placeholder') }}</p>
+  {% endif %}
+</section>
+
+<section id="tab-audit" hidden>
+  <div class="card">
+    <div class="filters">
+      <label class="field">
+        <span>{{ t('audit.actor') }}</span>
+        <input type="text" id="audit-actor" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>{{ t('audit.action') }}</span>
+        <input type="text" id="audit-action" autocomplete="off" placeholder="auth.">
+      </label>
+      <label class="field">
+        <span>{{ t('audit.result') }}</span>
+        <select id="audit-result">
+          <option value=""></option>
+          <option value="ok">ok</option>
+          <option value="denied">denied</option>
+          <option value="delayed">delayed</option>
+          <option value="ip_blocked">ip_blocked</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>{{ t('audit.ts_from') }}</span>
+        <input type="datetime-local" id="audit-from">
+      </label>
+      <label class="field">
+        <span>{{ t('audit.ts_to') }}</span>
+        <input type="datetime-local" id="audit-to">
+      </label>
+      <button type="button" id="btn-audit-apply">{{ t('audit.apply') }}</button>
+    </div>
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>{{ t('audit.ts') }}</th>
+          <th>{{ t('audit.actor') }}</th>
+          <th>{{ t('audit.action') }}</th>
+          <th>{{ t('audit.object') }}</th>
+          <th>{{ t('audit.ip') }}</th>
+          <th>{{ t('audit.result') }}</th>
+          <th>details</th>
+        </tr>
+      </thead>
+      <tbody id="audit-rows">
+        <tr><td colspan="7">{{ t('common.loading') }}</td></tr>
+      </tbody>
+    </table>
+    <div class="audit-pager">
+      <button type="button" id="btn-audit-prev">←</button>
+      <span id="audit-page-info"></span>
+      <button type="button" id="btn-audit-next">→</button>
+    </div>
+  </div>
+</section>
 {% endblock %}
 {% block scripts %}
 <script type="module">
@@ -164,6 +291,153 @@ document.getElementById('btn-tg-save')?.addEventListener('click', async () => {
   });
   tgStatus.textContent = res.ok ? 'OK' : `Error ${res.status}`;
   tgToken.value = '';
+});
+{% endif %}
+// ---- Audit tab (FR-3.16.2) — admin: полный журнал; support: read-only просмотр
+let auditOffset = 0;
+const AUDIT_LIMIT = 50;
+
+function auditParams() {
+  const p = new URLSearchParams({limit: String(AUDIT_LIMIT), offset: String(auditOffset)});
+  const actor = document.getElementById('audit-actor').value.trim();
+  const action = document.getElementById('audit-action').value.trim();
+  const result = document.getElementById('audit-result').value;
+  const from = document.getElementById('audit-from').value;
+  const to = document.getElementById('audit-to').value;
+  if (actor) p.set('actor', actor);
+  if (action) p.set('action', action);
+  if (result) p.set('result', result);
+  if (from) p.set('ts_from', from + ':00Z');
+  if (to) p.set('ts_to', to + ':59Z');
+  return p;
+}
+
+async function loadAudit() {
+  const tbody = document.getElementById('audit-rows');
+  const res = await fetch(`/api/v1/audit?${auditParams()}`);
+  if (!res.ok) {
+    tbody.innerHTML = `<tr><td colspan="7">Error ${res.status}</td></tr>`;
+    return;
+  }
+  const data = await res.json();
+  document.getElementById('audit-page-info').textContent =
+    `${data.offset + 1}–${data.offset + data.items.length} / ${data.total}`;
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="7">—</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.items.map((row) => {
+    const details = row.details
+      ? `<code title="${String(row.details).replace(/"/g, '"')}">${String(row.details).slice(0, 60)}</code>`
+      : '';
+    return `<tr><td>${row.ts}</td><td>${row.actor}</td><td>${row.action}</td>` +
+      `<td>${row.object ?? ''}</td><td>${row.ip ?? ''}</td><td>${row.result}</td>` +
+      `<td>${details}</td></tr>`;
+  }).join('');
+}
+
+document.getElementById('btn-audit-apply')?.addEventListener('click', () => {
+  auditOffset = 0;
+  loadAudit();
+});
+document.getElementById('btn-audit-prev')?.addEventListener('click', () => {
+  auditOffset = Math.max(0, auditOffset - AUDIT_LIMIT);
+  loadAudit();
+});
+document.getElementById('btn-audit-next')?.addEventListener('click', () => {
+  auditOffset += AUDIT_LIMIT;
+  loadAudit();
+});
+document.querySelector('[data-tab="audit"]')?.addEventListener('click', () => {
+  if (auditOffset === 0) loadAudit();
+});
+
+{% if role == 'admin' %}
+// ---- Appearance (FR-3.10.1) — admin
+fetch('/api/v1/settings/appearance').then(async (res) => {
+  if (!res.ok) return;
+  const cfg = await res.json();
+  document.getElementById('panel-title').value = cfg.title || '';
+  document.getElementById('panel-subtitle').value = cfg.subtitle || '';
+  document.getElementById('panel-logo').value = cfg.logo || '';
+});
+document.getElementById('btn-appearance-save')?.addEventListener('click', async () => {
+  const res = await fetch('/api/v1/settings/appearance', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      title: document.getElementById('panel-title').value || null,
+      subtitle: document.getElementById('panel-subtitle').value || null,
+      logo: document.getElementById('panel-logo').value || null,
+    }),
+  });
+  document.getElementById('appearance-status').textContent =
+    res.ok ? 'OK' : `Error ${res.status}`;
+});
+
+// ---- CAPTCHA (FR-3.10.3) — admin
+fetch('/api/v1/settings/captcha').then(async (res) => {
+  if (res.ok) {
+    document.getElementById('captcha-enabled').checked = (await res.json()).enabled;
+  }
+});
+document.getElementById('btn-captcha-save')?.addEventListener('click', async () => {
+  const res = await fetch('/api/v1/settings/captcha', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled: document.getElementById('captcha-enabled').checked}),
+  });
+  document.getElementById('captcha-status').textContent =
+    res.ok ? 'OK' : `Error ${res.status}`;
+});
+
+// ---- Alerts (FR-3.10.13) — admin
+const alertCfgStatus = document.getElementById('alert-config-status');
+fetch('/api/v1/settings/alerts').then(async (res) => {
+  if (!res.ok) return;
+  const cfg = await res.json();
+  alertCfgStatus.textContent = cfg.telegram_configured
+    ? '' : "{{ t('backups.telegram.not_configured') }}";
+  document.querySelectorAll('.alert-toggle').forEach((cb) => {
+    cb.checked = !!cfg.toggles[cb.dataset.alert];
+  });
+  document.getElementById('alert-down-minutes').value = cfg.server_down_minutes || 5;
+  document.getElementById('alert-ssl-path').value = cfg.ssl_cert_path || '';
+});
+
+document.getElementById('btn-alerts-save')?.addEventListener('click', async () => {
+  const toggles = {};
+  document.querySelectorAll('.alert-toggle').forEach((cb) => {
+    toggles[cb.dataset.alert] = cb.checked;
+  });
+  const body = {toggles, server_down_minutes: Number(document.getElementById('alert-down-minutes').value) || 5};
+  const sslPath = document.getElementById('alert-ssl-path').value.trim();
+  if (sslPath) body.ssl_cert_path = sslPath;
+  const res = await fetch('/api/v1/settings/alerts', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  document.getElementById('alerts-status').textContent =
+    res.ok ? 'OK' : `Error ${res.status}`;
+});
+
+document.getElementById('btn-alert-test')?.addEventListener('click', async () => {
+  const token = document.getElementById('alert-token').value;
+  const chat = document.getElementById('alert-chat').value;
+  if (token || chat) {
+    const save = await fetch('/api/v1/settings/alerts', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({bot_token: token || undefined, chat_id: chat || undefined}),
+    });
+    if (!save.ok) {
+      alertCfgStatus.textContent = `Error ${save.status}`;
+      return;
+    }
+  }
+  const res = await fetch('/api/v1/settings/alerts/test', {method: 'POST'});
+  alertCfgStatus.textContent = res.ok ? 'OK' : `Error ${res.status}`;
 });
 {% endif %}
 </script>

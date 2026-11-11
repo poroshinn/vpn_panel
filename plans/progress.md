@@ -19,13 +19,62 @@
 | 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ✅ done | 2026-11-11 | Share-токены (стабильные) + пароль argon2; rotate/revoke с audit; публичная /share/{token} (список подключений + conf/QR теми же генераторами MVP-06); share-сессия — HMAC-cookie с ревизией (смена пароля/токена/токена-ревокации мгновенно закрывает сессию); rate-limit попыток пароля (10/60с); noindex/no-store; 7 integration-тестов; 200 тестов зелёных, ruff чист |
 | 11 | [mvp-11-backups.md](tasks/mvp-11-backups.md) | M10 | ✅ done | 2026-11-11 | Снапшоты VACUUM INTO под writer-lock + gzip + sha256; ротация 7 файлов (local/pre-restore/manual/pre-migrate); Telegram: ежедневная задача (UTC), лимит 50 MiB, деградация в local + audit auto_failed при ненастроенном боте; restore: единый валидатор (gzip/SQLite header/integrity/схема), превью, пред-restore снапшот, атомарная замена + переоткрытие соединения, protected-профиль (merge по умолчанию; полное восстановление только с confirm «restore», попытка отмотки ⇒ 409), автооткат при сбое; API /api/v1/backups + вкладка «Бэкапы» в настройках; 25 новых тестов; 225 зелёных, ruff чист по новым файлам |
 | 12 | [mvp-12-api-tokens.md](tasks/mvp-12-api-tokens.md) | M11 | ✅ done | 2026-11-11 | Bearer-токены awp_ (SHA-256 в БД, raw однократно, TTL nullable, ротация/отзыв/лимит 20), динамическое наследование роли владельца; Bearer в get_current_session наравне с cookie; hook автопрекращения при disable/demote/delete владельца; API /api/v1/tokens; rate-limit /api/* (скользящее окно, auth строже, настройки env); единый JSON-обработчик HTTPException/ValidationError на /api*; /api — 307-алиас на /api/v1; /docs + /redoc; 29 новых тестов; 254 зелёных, ruff чист по новым файлам |
-| 13 | [mvp-13-observability-alerts.md](tasks/mvp-13-observability-alerts.md) | M12 | ⬜ todo | — | Финал MVP: acceptance по разделу 8 ТЗ |
+| 13 | [mvp-13-observability-alerts.md](tasks/mvp-13-observability-alerts.md) | M12 | ✅ done | 2026-11-11 | Health §8.8 (allowlist env HEALTH_ALLOWLIST, 503 при остановке БД); /api/v1/system/status (uptime/схема/размер БД/фоновые задачи); app/alerts (Telegram-алерты с тумблерами: server_down/quota/ssl_expiry/backup_failed/accounting_gap, дедупликация ≤1/час); ObservabilityMonitor (тик 60с: ping серверов, диск, SSL, gap-сводка); настройки панели API + UI (заголовок/подзаголовок/логотип, CAPTCHA вкл/выкл, алерты); UI audit trail с фильтрами (admin/support read-only); disk_guard (алерт <200 MiB, read-only <50 MiB, FR-3.15.7); 19 новых тестов; 273 зелёных, ruff чист по новым файлам |
 
 ## Этапы 2–3
 
 Задачи будут декомпозированы из `plans/roadmap.md` после закрытия MVP.
 
 ## Заметки
+
+- 2026-11-11 — MVP-13: `app/api/routes/system.py` — GET /health по §8.8:
+  без аутентификации, allowlist по IP (env `HEALTH_ALLOWLIST`, CIDR через
+  запятую; дефолт — loopback); IP вне списка ⇒ 404 (эндпоинт скрыт);
+  БД остановлена/нет соединения ⇒ 503 `{"database":"down"}`. Allowlist
+  проверяется на каждый запрос (env читается динамически); точное строковое
+  совпадение допускается для тест-клиентов. GET /api/v1/system/status
+  (admin, FR-3.16.1): uptime_seconds/started_at, версия схемы (get_schema_version),
+  размер БД + WAL, статус фоновых задач (accounting running/poll_interval,
+  backup_scheduler running/last_result). Отладка: ASGI-транспорт httpx
+  представляет клиента как 127.0.0.1 (не "testclient") — тесты allowlist
+  используют чужой адрес 10.99.99.99.
+  `app/alerts/service.py` (FR-3.10.13) — AlertConfig + тумблеры в settings
+  (alert_*_enabled, по умолчанию выключены), получатель — собственные ключи
+  alert_telegram_bot_token/chat_id с env-фолбэком TELEGRAM_*; токены never-echo.
+  raise_alert: тумблер → дедупликация (last_sent на kind, дефолт −inf; баг:
+  дефолт 0.0 при clock=0 в тестах давал ложную дедупликацию первого алерта),
+  отправка sendMessage, сбой → откат метки + warning (алерты не бросают).
+  Конкретные алерты: server_down (порог N минут, down_since с флагом notified,
+  сброс при reachable), quota_exhausted, backup_failed, accounting_gap
+  (≤1/час дедупликацией), ssl_expiry (ssl._ssl._test_decode_cert + parsedate,
+  ≤14 дней, дедуп 24ч). `app/alerts/monitor.py` — ObservabilityMonitor: тик
+  60с — TCP-ping серверов → alert_server_down, check_disk, alert_ssl_expiry,
+  gap-сводка за час из accounting_recoveries. `app/core/disk_guard.py`
+  (FR-3.15.7) — check_disk (shutil.disk_usage, fail-open при ошибке), пороги:
+  критический 200 MiB (алерт), аварийный 50 MiB (read-only); ensure_writable —
+  guard для мутаций; DiskState кэшируется (last_state). `app/api/routes/settings.py`
+  (FR-3.10.1/3/13): GET/PUT /appearance (panel_title/subtitle/logo), GET/PUT
+  /captcha (вкл/выкл; чтение admin+support, мутация admin), GET/PUT /alerts
+  (тумблеры + получатель; токен только на запись, ответ telegram_configured),
+  POST /alerts/test (sendMessage «test alert», 502 при сбое), GET /disk.
+  `app/api/routes/audit.py` (FR-3.16.2) — GET /api/v1/audit: фильтры
+  actor/action-префикс/result/ts_from/ts_to, limit≤500/offset; roles
+  admin+support (обе read-only). UI settings.html: вкладка Audit (таблица
+  с фильтрами и пагинацией), вкладка CAPTCHA, вкладка Alerts (тумблеры,
+  токен/чат, порог минут, путь к сертификату, тест-кнопка); admin-поля
+  внешнего вида (заголовок/подзаголовок/логотип). i18n-ключи settings.*/audit.*
+  (en/ru). Lifespan: ObservabilityMonitor запускается/останавливается.
+  Тесты: tests/test_health.py (allowlist 404/200, 503 db-down),
+  tests/integration/test_observability.py (17: system/status роли+содержимое,
+  алерты send/dedup/toggle-оff/server_down-порог/gap-час, never-echo токена,
+  appearance roundtrip + роли, captcha, alerts-роли, audit роли+фильтры,
+  disk_guard read-only (мок disk_usage) + /disk, monitor tick smoke).
+  Исправлено: mock httpx-клиенту нужен aclose (TelegramSendError → False);
+  sed-патч noqa сломал вызовы save_alert_config — chat_id уходил в комментарий.
+  Итог: 273 теста зелёных; ruff по новым файлам чист.
+  Вне скоупа (по задаче): Prometheus (этап 2), exit-failover-алерты (этап 3),
+  полная интеграция ensure_writable в каждый мутационный эндпоинт (guard
+  готов, подключение точечное — правило минимального изменения MVP).
 
 - 2026-11-11 — MVP-12: `app/auth/tokens.py` — TokenService: create
   (raw `awp_` + secrets.token_urlsafe(32), в БД только SHA-256; TTL
