@@ -25,6 +25,7 @@
   "servers.preset": "Preset",
   "servers.port": "Port",
   "servers.install": "Install",
+  "servers.stats_partial": "Some metrics are temporarily unavailable",
   "users.title": "Users",
   "users.empty": "No users yet.",
   "users.create": "Create",

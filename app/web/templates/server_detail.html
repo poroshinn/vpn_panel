@@ -60,14 +60,29 @@
 import { connectEvents, startPolling } from '/static/sse.js';
 const serverId = {{ server.id }};
 
-function renderStats(stats) {
+function renderStats(data) {
   const el = document.getElementById('host-stats');
-  if (!stats) { el.innerHTML = '<p class="meta">—</p>'; return; }
+  if (!data) { el.innerHTML = '<p class="meta">—</p>'; return; }
+  if (!data.reachable) {
+    const err = data.error ? ` (${data.error})` : '';
+    el.innerHTML = `<p class="meta">{{ t('dashboard.unreachable') }}${err}</p>`;
+    return;
+  }
+  const s = data.stats || {};
+  const memTotalMb = s.mem_total_kb != null ? Math.round(s.mem_total_kb / 1024) : null;
+  const memUsedMb = (s.mem_total_kb != null && s.mem_available_kb != null)
+    ? Math.round((s.mem_total_kb - s.mem_available_kb) / 1024) : null;
+  const diskTotalGb = s.disk_total_bytes != null ? (s.disk_total_bytes / 1e9).toFixed(1) : null;
+  const diskUsedGb = s.disk_used_bytes != null ? (s.disk_used_bytes / 1e9).toFixed(1) : null;
+  const uptimeH = s.uptime_s != null ? Math.floor(s.uptime_s / 3600) : null;
+  const partial = data.stats_partial
+    ? `<div class="meta">{{ t('servers.stats_partial') }}</div>` : '';
   el.innerHTML = `
-    <div>{{ t('servers.cpu') }}: ${stats.cpu_percent ?? '—'}%</div>
-    <div>{{ t('servers.memory') }}: ${stats.mem_used_mb ?? '—'} / ${stats.mem_total_mb ?? '—'} MB</div>
-    <div>{{ t('servers.disk') }}: ${stats.disk_used_gb ?? '—'} / ${stats.disk_total_gb ?? '—'} GB</div>
-    <div>{{ t('servers.load') }}: ${stats.load_1 ?? '—'}</div>`;
+    <div>{{ t('servers.cpu') }}: ${s.cpu_percent ?? '—'}%</div>
+    <div>{{ t('servers.memory') }}: ${memUsedMb ?? '—'} / ${memTotalMb ?? '—'} MB</div>
+    <div>{{ t('servers.disk') }}: ${diskUsedGb ?? '—'} / ${diskTotalGb ?? '—'} GB${s.disk_percent != null ? ` (${s.disk_percent}%)` : ''}</div>
+    <div>{{ t('servers.load') }}: ${s.load_1m ?? '—'}, ${s.load_5m ?? '—'}, ${s.load_15m ?? '—'}</div>
+    <div>Uptime: ${uptimeH != null ? uptimeH + ' h' : '—'}</div>${partial}`;
 }
 
 async function refreshPing() {
@@ -86,7 +101,7 @@ async function refreshStats() {
     const resp = await fetch(`/api/v1/servers/${serverId}/stats`);
     if (!resp.ok) return;
     const data = await resp.json();
-    renderStats(data.stats);
+    renderStats(data);
   } catch { /* network */ }
 }
 

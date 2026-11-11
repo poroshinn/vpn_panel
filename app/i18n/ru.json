@@ -25,6 +25,7 @@
   "servers.preset": "Пресет",
   "servers.port": "Порт",
   "servers.install": "Установить",
+  "servers.stats_partial": "Некоторые метрики временно недоступны",
   "users.title": "Пользователи",
   "users.empty": "Пользователей нет.",
   "users.create": "Создать",
