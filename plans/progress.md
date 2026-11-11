@@ -14,7 +14,7 @@
 | 05 | [mvp-05-servers.md](tasks/mvp-05-servers.md) | M4 | ✅ done | 2026-11-10 | Сервис `app/servers/service.py` (CRUD, стабильный uid, reorder, онбординг-верификация через SSH, reboot), API `/api/v1/servers` (роли §2.2, guard удаления, audit), страницы дашборда/сервера/мастера; 102 теста зелёных |
 | 06 | [mvp-06-protocols-peers.md](tasks/mvp-06-protocols-peers.md) | M5 | ✅ done | 2026-11-10 | Пресеты (awg-3x/2x/legacy, wg; junk S1/S2/I1–I5, BBR, compose-шаблон), installer (мульти-инстансы `awg2__2`, идемпотентный compose up/down, неопределённые исходы → `lifecycle_uncertain`, 502), peers (operation_id-идемпотентность в `peer_creations`, ретрай с сохранённым client_id, lifecycle-lock на (server, instance), rename/enable/disable/delete, tombstone в `accounting_recoveries`), configs (.conf-санитайзер, QR PNG, vpn:// roundtrip), API `/presets`, `/servers/{id}/protocols`, `/servers/{id}/connections`, `/connections/{id}/config?format=conf|qr`; 124 теста зелёных |
 | 07 | [mvp-07-accounting.md](tasks/mvp-07-accounting.md) | M6 | ✅ done | 2026-11-10 | Fail-closed учёт трафика: миграция 0002 (epoch_hash, базлайны rx/tx, lifetime, last_sample_at, counters_verified_final, traffic_reset_month); `app/accounting/` — epochs (SHA-256 хэш эпохи из container/PID/started/boot_id/ifindex/inode:ctime, парсер `awg show transfer`), collector (опрос метаданных до/после transfer, дедупликация владельцев алиасов), service (фоновый цикл 60с [30–300], базлайны переживают рестарт, gap-детекция epoch_changed/counter_reset → tombstone `accounting_recoveries` без обнуления итогов, квоты UTC + auto-disable `quota`, месячный сброс), finalization (FR-3.11.4: чтение счётчиков при отвязке, дельта + tombstone verified, fail-closed 409 can_force / allow_unverified); API `/api/v1/accounting`, `/users/{id}/accounting|quota`, `/accounting/reset-month`, `/servers/{id}/connections/{id}/finalize` (роли §2.2, audit); 147 тестов зелёных, ruff чист по новым файлам |
-| 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ⬜ todo | — | |
+| 08 | [mvp-08-users.md](tasks/mvp-08-users.md) | M7 | ✅ done | 2026-11-11 | Пользователи панели: `app/users/service.py` (CRUD FR-3.6.1 — роль/пароль обязателен кроме none/telegram/квота/expiration, защита последнего admin), enable/disable одной кнопкой с автоинвалидацией FR-3.6.4 (сессии — сверка с БД на каждом запросе, Bearer-токены — hook `TokenRevocationHook` для MVP-11), привязка подключений FR-3.6.2 и отвязка владельца FR-3.6.3 (активный peer → stop на ноде + финализация; нечитаемый счётчик → 409 can_force / allow_unverified), экспорт подключений FR-3.6.5 (admin/support); API `/api/v1/users/...` (роли §2.2, audit-события user.created/updated/enabled/disabled/deleted, connection.assigned/unlinked, user.export); 7 integration-тестов (CRUD, мгновенная инвалидация сессии на disable и role=none, unlink через stop с verified-финализацией, fail-closed 409, матрица экспорта, audit); 154 теста зелёных, ruff чист по новым файлам |
 | 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ⬜ todo | — | |
 | 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ⬜ todo | — | |
 | 11 | [mvp-11-backups.md](tasks/mvp-11-backups.md) | M10 | ⬜ todo | — | |
@@ -27,6 +27,22 @@
 
 ## Заметки
 
+- 2026-11-11 — MVP-08: сервис `app/users/service.py` + API `app/api/routes/users.py`,
+  подключены в `app/main.py` (`app.state.user_service`). Ключевые решения:
+  (1) инвалидация FR-3.6.4 — сессии режутся уже существующей сверкой с БД в
+  `app/auth/dependencies.py` (enabled/role/none), для Bearer-токенов заложен hook
+  `TokenRevocationHook` (конструктор UserService), вызывается на disable, role=none
+  и delete; (2) отвязка FR-3.6.3 — `unlink_owner` делегирует финализацию
+  `FinalizationService.finalize_peer` (inject callable), перед этим best-effort
+  `set_peer_enabled(stop)` для активного peer'а; внешний lifecycle-lock НЕ берётся
+  (Lock не реентерабельный — вложенный `set_peer_enabled` на том же
+  (server, instance) дал бы deadlock), каждая внутренняя операция держит свой lock;
+  (3) unlink = завершение подключения с tombstone (схема user_id NOT NULL —
+  «перепривязка» без финализации делает `assign_connection`). Отладка: 403 в
+  тесте disable возникал из-за подмены cookie при логине u2 в том же клиенте —
+  разделены два `AsyncClient`; вход при role=none — 400 `role_none` (по коду
+  auth-сервиса). Вне скоупа: группы, self-service, share-setup, страницы
+  «Пользователи» (UI — MVP-09).
 - 2026-11-10 — создан стартовый набор: документация, планы, скелет кода (MVP-01).
 - 2026-11-10 — MVP-02: `Database` — WAL, busy_timeout, writer-lock, `transaction()`
   (атомарные коммит/откат); мигратор — валидация id (дубли/неположительные ⇒
