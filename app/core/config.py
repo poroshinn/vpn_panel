@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Ключ подписи cookie-сессий
-    secret_key: str = "change-me"
+    secret_key: str = "change-me"  # noqa: S105 — плейсхолдер, переопределяется env
 
     # Мастер-ключ шифрования секретов серверов (AES-256-GCM).
     # На MVP-03 станет обязательным (генерация при первом старте в volume).
@@ -49,6 +49,11 @@ class Settings(BaseSettings):
 
     # Учёт трафика (FR-3.5.5): интервал опроса 30–300 с
     accounting_poll_interval: int = 60
+
+    # Rate-limit /api/* (FR-2.3): скользящее окно
+    rate_limit_window_seconds: int = 60
+    rate_limit_api_per_window: int = 300
+    rate_limit_auth_per_window: int = 30
 
 
 _settings: Settings | None = None

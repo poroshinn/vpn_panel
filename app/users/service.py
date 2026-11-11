@@ -82,6 +82,10 @@ class UserService:
         self._servers = servers
         self._token_hook = token_hook
 
+    def set_token_hook(self, hook: TokenRevocationHook) -> None:
+        """Поздняя привязка hook'а (после создания сервисов в lifespan)."""
+        self._token_hook = hook
+
     # ---------------------------------------------------------------- read
 
     async def list_users(self, db: Database) -> list[dict[str, Any]]:

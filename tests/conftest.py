@@ -25,5 +25,12 @@ def tmp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("LOG_DIR", str(logs))
     monkeypatch.setenv("BACKUP_DIR", str(backups))
     monkeypatch.setenv("SECRET_KEY", "test-secret-key")
+    # rate-limit не должен срабатывать на тестовом traffic (один IP testclient)
+    monkeypatch.setenv("RATE_LIMIT_API_PER_WINDOW", "1000000")
+    monkeypatch.setenv("RATE_LIMIT_AUTH_PER_WINDOW", "1000000")
     monkeypatch.setattr(config_module, "_settings", None)
+    # сброс синглтона лимитера: окна не должны переживать тесты
+    import app.core.rate_limit as rate_limit_module
+
+    monkeypatch.setattr(rate_limit_module, "_limiter", None)
     return data

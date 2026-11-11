@@ -14,12 +14,15 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.auth.sessions import COOKIE_NAME, SessionData, SessionError
+from app.auth.tokens import TOKEN_PREFIX, TokenError, TokenService
 from app.db.database import Database
 
 ROLE_RANK = {"none": 0, "user": 1, "support": 2, "admin": 3}
 
 
-def api_error(status_code: int, error_code: str, message: str, details: dict[str, Any] | None = None) -> JSONResponse:
+def api_error(
+    status_code: int, error_code: str, message: str, details: dict[str, Any] | None = None
+) -> JSONResponse:
     """Единый формат ошибки API (правило 9 AGENTS.md)."""
     return JSONResponse(
         status_code=status_code,
@@ -45,6 +48,8 @@ def _gc_revoked() -> None:
     """Очистка blacklist'а от сессий, умерших по absolute TTL сами."""
     import time
 
+    from app.core.config import get_settings
+
     settings = get_settings()
     now = time.time()
     alive = {
@@ -55,12 +60,44 @@ def _gc_revoked() -> None:
     _revoked_sessions.intersection_update(alive)
 
 
-async def get_current_session(request: Request) -> SessionData:
-    """Текущая сессия из cookie; сверка с БД на каждом запросе.
+_token_service: TokenService | None = None
 
+
+def get_token_service() -> TokenService:
+    """Синглтон сервиса токенов (один на процесс)."""
+    global _token_service
+    if _token_service is None:
+        _token_service = TokenService()
+    return _token_service
+
+
+async def get_current_session(request: Request) -> SessionData:
+    """Текущая сессия из cookie ИЛИ Bearer-токена (FR-3.12.4).
+
+    Cookie-сессии и API-токены проходят одну и ту же сверку с БД
+    (инвалидация при disable/role-change/none).
     :raises HTTPException: 401 — нет/битая сессия; 403 — сессия невалидна
         (пользователь отключён, роль none).
     """
+    bearer = request.headers.get("Authorization", "")
+    if bearer.lower().startswith("bearer "):
+        raw = bearer[7:].strip()
+        if not raw.startswith(TOKEN_PREFIX):
+            raise HTTPException(status_code=401, detail="invalid_token")
+        try:
+            session = await get_token_service().authenticate(request.app.state.db, raw)
+        except TokenError as exc:
+            raise HTTPException(status_code=401, detail=exc.error_code) from exc
+        user = await request.app.state.db.fetch_one(
+            "SELECT id, username, role, enabled FROM users WHERE id = ?", (session.user_id,)
+        )
+        if user is None or not user["enabled"]:
+            raise HTTPException(status_code=403, detail="account_disabled")
+        if user["role"] != session.role:
+            raise HTTPException(status_code=401, detail="role_changed")
+        request.state.session = session
+        return session
+
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         raise HTTPException(status_code=401, detail="not_authenticated")
@@ -74,7 +111,9 @@ async def get_current_session(request: Request) -> SessionData:
         _gc_revoked()
 
     db: Database = request.app.state.db
-    user = await db.fetch_one("SELECT id, username, role, enabled FROM users WHERE id = ?", (session.user_id,))
+    user = await db.fetch_one(
+        "SELECT id, username, role, enabled FROM users WHERE id = ?", (session.user_id,)
+    )
     if user is None or not user["enabled"]:
         # Инвалидация: пользователь удалён или отключён
         raise HTTPException(status_code=403, detail="account_disabled")

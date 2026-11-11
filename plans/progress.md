@@ -18,7 +18,7 @@
 | 09 | [mvp-09-ui-sse-i18n.md](tasks/mvp-09-ui-sse-i18n.md) | M8 | ✅ done | 2026-11-11 | i18n (en/ru, fallback en, CLDR-плурализация, cookie→Accept-Language→en); SSE /api/v1/events (EventHub, queue 256, дроп при переполнении, keep-alive 15с, retry 3с); дизайн-система (CSS-переменные, светлая/тёмная тема через cookie, мобильная tab-панель, base.html); страницы: дашборд (SSE+polling-fallback), сервер (ping/статистика), /my (свои подключения, conf/QR), настройки (вкладки: внешний вид, CAPTCHA/бэкапы/алерты — заглушки); noindex/no-follow meta на всех страницах + /robots.txt Disallow:/; статика с max-age; 193 теста зелёных, ruff чист |
 | 10 | [mvp-10-sharing.md](tasks/mvp-10-sharing.md) | M9 | ✅ done | 2026-11-11 | Share-токены (стабильные) + пароль argon2; rotate/revoke с audit; публичная /share/{token} (список подключений + conf/QR теми же генераторами MVP-06); share-сессия — HMAC-cookie с ревизией (смена пароля/токена/токена-ревокации мгновенно закрывает сессию); rate-limit попыток пароля (10/60с); noindex/no-store; 7 integration-тестов; 200 тестов зелёных, ruff чист |
 | 11 | [mvp-11-backups.md](tasks/mvp-11-backups.md) | M10 | ✅ done | 2026-11-11 | Снапшоты VACUUM INTO под writer-lock + gzip + sha256; ротация 7 файлов (local/pre-restore/manual/pre-migrate); Telegram: ежедневная задача (UTC), лимит 50 MiB, деградация в local + audit auto_failed при ненастроенном боте; restore: единый валидатор (gzip/SQLite header/integrity/схема), превью, пред-restore снапшот, атомарная замена + переоткрытие соединения, protected-профиль (merge по умолчанию; полное восстановление только с confirm «restore», попытка отмотки ⇒ 409), автооткат при сбое; API /api/v1/backups + вкладка «Бэкапы» в настройках; 25 новых тестов; 225 зелёных, ruff чист по новым файлам |
-| 12 | [mvp-12-api-tokens.md](tasks/mvp-12-api-tokens.md) | M11 | ⬜ todo | — | |
+| 12 | [mvp-12-api-tokens.md](tasks/mvp-12-api-tokens.md) | M11 | ✅ done | 2026-11-11 | Bearer-токены awp_ (SHA-256 в БД, raw однократно, TTL nullable, ротация/отзыв/лимит 20), динамическое наследование роли владельца; Bearer в get_current_session наравне с cookie; hook автопрекращения при disable/demote/delete владельца; API /api/v1/tokens; rate-limit /api/* (скользящее окно, auth строже, настройки env); единый JSON-обработчик HTTPException/ValidationError на /api*; /api — 307-алиас на /api/v1; /docs + /redoc; 29 новых тестов; 254 зелёных, ruff чист по новым файлам |
 | 13 | [mvp-13-observability-alerts.md](tasks/mvp-13-observability-alerts.md) | M12 | ⬜ todo | — | Финал MVP: acceptance по разделу 8 ТЗ |
 
 ## Этапы 2–3
@@ -26,6 +26,33 @@
 Задачи будут декомпозированы из `plans/roadmap.md` после закрытия MVP.
 
 ## Заметки
+
+- 2026-11-11 — MVP-12: `app/auth/tokens.py` — TokenService: create
+  (raw `awp_` + secrets.token_urlsafe(32), в БД только SHA-256; TTL
+  опционален; лимит 20 активных на владельца; только admin/support),
+  rotate (новый raw + отзыв старого, TTL сохраняется по остатку), revoke
+  (мгновенный), revoke_user_tokens (hook UserService), authenticate
+  (роль живая из users.role; disable/role=none/user ⇒ token_revoked).
+  [app/auth/dependencies.py](app/auth/dependencies.py) — get_current_session
+  принимает Authorization: Bearer наравне с cookie, та же сверка с БД.
+  API [app/api/routes/tokens.py](app/api/routes/tokens.py) — GET/POST
+  /api/v1/tokens, POST /{id}/rotate, DELETE /{id} (raw возвращается
+  однократно; audit api_token.*). Hook подключён в lifespan через
+  UserService.set_token_hook (адаптер TokenService) — disable/demote/delete
+  владельца отзывает его токены (MVP-08 hook). Rate-limit
+  [app/core/rate_limit.py](app/core/rate_limit.py) — скользящее окно на IP
+  (env RATE_LIMIT_*: api 300/мин, auth 30/мин по умолчанию), middleware в
+  main.py возвращает 429 в едином JSON. Единый обработчик HTTPException/
+  RequestValidationError на /api* (FR-3.12.5). /api — 307-алиас на /api/v1
+  (FR-3.12.3). /docs + /redoc — Swagger/ReDoc из коробки FastAPI
+  (FR-3.12.2). Тесты: tests/unit/test_auth_tokens.py (10),
+  tests/unit/test_rate_limit.py (6), tests/integration/test_api_tokens.py
+  (13: lifecycle, Bearer на сессионных эндпоинтах, мгновенный отзыв,
+  ротация, support-токен без admin-операций, наследование роли динамически,
+  disable/demote владельца, единый формат ошибок, openapi/docs/redoc,
+  алиас). conftest: rate-limit лимиты подняты в тестовом env + сброс
+  синглтона лимитера (иначе глобальные окна дают 429 в существующих
+  тестах). Итог: 254 теста зелёных; ruff по затронутым файлам чист.
 
 - 2026-11-11 — MVP-11: `app/backups/snapshot.py` — make_snapshot:
   `VACUUM INTO` под writer-lock панели (asyncio.to_thread) — консистентный
